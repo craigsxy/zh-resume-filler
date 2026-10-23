@@ -1,0 +1,162 @@
+:root{
+  color-scheme:light;
+  --ink:#342f29;
+  --muted:#857d72;
+  --line:#e8dfd2;
+  --canvas:#f6f2eb;
+  --panel:#fffdf9;
+  --sand:#e9decc;
+  --accent:#75634d;
+  --accent-dark:#5d4c38;
+  --soft:#f1e9dc;
+  --danger:#a54c3d;
+  font:14px/1.5 "Segoe UI","Microsoft YaHei",sans-serif;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--canvas);color:var(--ink);min-width:360px}
+
+/* 顶栏 */
+.topbar{
+  height:70px;background:var(--panel);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:11px;padding:0 18px;position:sticky;top:0;z-index:3;
+}
+.brand-mark{
+  width:34px;height:34px;border-radius:11px;background:var(--sand);color:var(--accent-dark);
+  display:grid;place-items:center;font-weight:700;
+}
+.topbar strong,.topbar small{display:block}
+.topbar strong{font-size:14px}
+.topbar small{font-size:11px;color:var(--muted)}
+button{font:inherit;cursor:pointer}
+.primary,.secondary,.icon-button{border:0;border-radius:9px}
+.primary{background:var(--accent);color:white;padding:9px 13px;font-weight:600}
+.primary:hover{background:var(--accent-dark)}
+.fill-button{margin-left:auto}
+
+/* 布局 */
+.layout{display:grid;grid-template-columns:164px minmax(0,1fr);min-height:calc(100vh - 106px)}
+.category-nav{padding:18px 10px;border-right:1px solid var(--line);background:#f3eee5}
+.nav-item{
+  display:flex;width:100%;border:0;background:transparent;color:#625b51;
+  text-align:left;padding:9px 10px;border-radius:8px;margin:2px 0;
+  font-size:12px;align-items:center;gap:8px;
+}
+.nav-item:hover{background:#ebe3d7}
+.nav-item.active{background:#e7ddcd;color:var(--accent-dark);font-weight:650}
+.nav-item .nav-count{margin-left:auto;font-size:10px;color:#9d9283}
+
+/* 主面板 */
+.main-panel{padding:25px 24px 44px;min-width:0;max-width:980px;width:100%;margin:0 auto}
+.section-heading{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.eyebrow{font-size:10px;text-transform:uppercase;letter-spacing:.13em;color:#9a8d7a;margin:0 0 3px}
+.section-heading h1{font-size:21px;line-height:1.25;margin:0}
+.secondary{background:#eee7dc;color:var(--accent-dark);padding:8px 11px;font-size:12px;font-weight:600}
+.secondary:hover{background:#e5dac9}
+.section-description{font-size:12px;color:var(--muted);margin:8px 0 18px}
+.records{display:grid;gap:14px}
+.record-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 17px;box-shadow:0 2px 8px #49381b08}
+.record-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:13px}
+.record-title{font-size:12px;font-weight:650;color:#6c6256}
+.delete-button{border:0;background:transparent;color:#9e8b7a;padding:4px 7px;border-radius:6px;font-size:11px}
+.delete-button:hover{background:#f8ece8;color:var(--danger)}
+
+/* 字段网格 */
+.field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 13px}
+.field{min-width:0}
+.field.wide{grid-column:1/-1}
+.field label{display:block;font-size:11px;color:#71685d;margin-bottom:5px}
+.field input,.field textarea,.field select{
+  display:block;width:100%;border:1px solid #e5ddd1;border-radius:7px;
+  padding:8px 9px;background:#fffefa;color:var(--ink);
+  font:12px inherit;outline:none;
+}
+.field input:focus,.field textarea:focus,.field select:focus{border-color:#b8a78e;box-shadow:0 0 0 2px #e9decc80}
+.field textarea{resize:vertical;min-height:64px}
+
+/* 空状态 */
+.empty-state{padding:28px 18px;border:1px dashed #d9cdbb;border-radius:12px;text-align:center;color:var(--muted);background:#fbf8f2;font-size:12px}
+
+/* 页脚 */
+footer{border-top:1px solid var(--line);padding:10px 18px;color:#978d81;font-size:10px;background:#f8f5ef}
+
+/* 提示条 */
+.notice{
+  position:fixed;top:78px;right:14px;z-index:5;max-width:320px;
+  background:#3f392f;color:#fff;padding:10px 13px;border-radius:9px;
+  box-shadow:0 6px 24px #21180d26;font-size:12px;opacity:0;
+  transform:translateY(-5px);pointer-events:none;transition:.18s;
+}
+.notice.show{opacity:1;transform:translateY(0)}
+.notice.error{background:#8e493c}
+
+/* 字段精度标签 */
+.field-tag{
+  display:inline-block;margin-left:6px;padding:0 5px;border-radius:4px;
+  background:#efe6d7;color:#8a7a63;font-size:9px;line-height:14px;vertical-align:middle;
+}
+.photo-preview{display:block;max-width:120px;max-height:140px;object-fit:cover;border-radius:8px;margin-top:8px}
+
+/* 分类下的自定义字段 */
+.custom-fields{margin-top:15px;border-top:1px dashed #e8dfd2;padding-top:11px}
+.custom-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.custom-title{font-size:11px;font-weight:600;color:#8a7f70}
+.custom-hint{margin:0;font-size:10px;line-height:1.7;color:#a99e8e}
+.custom-rows{display:grid;gap:9px}
+.custom-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr) auto;gap:7px;align-items:center}
+.custom-row input{
+  display:block;width:100%;border:1px solid #e5ddd1;border-radius:7px;
+  padding:7px 8px;background:#fffefa;color:var(--ink);font:12px inherit;outline:none;
+}
+.custom-row input:focus{border-color:#b8a78e;box-shadow:0 0 0 2px #e9decc80}
+/* 唯一性监测：重名 / 空名 → 标红并给一句"为什么这条不会被填" */
+.custom-warn{margin:4px 0 0;font-size:10px;line-height:1.6;color:var(--danger)}
+.custom-item.has-warning .custom-row input{border-color:#dbb0a5;background:#fffaf8}
+.field.custom-name-field.has-warning input{border-color:#dbb0a5;background:#fffaf8}
+
+/* 填充报告 */
+.report{
+  margin:12px 14px 0;background:var(--panel);border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px 6px;box-shadow:0 2px 8px #49381b08;
+}
+.report-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px}
+.report-head strong{font-size:12px;color:#6c6256}
+.report-actions{display:flex;gap:4px}
+.link-button{border:0;background:transparent;color:#8a7f70;font-size:11px;padding:3px 6px;border-radius:6px}
+.link-button:hover{background:#f1e9dc;color:var(--accent-dark)}
+.report-summary{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:9px}
+.chip{
+  font-size:11px;color:#6f6558;background:#f4eee3;border:1px solid #e8dfd2;
+  border-radius:20px;padding:2px 9px;
+}
+.chip b{font-weight:700;color:var(--accent-dark);margin-right:3px}
+.report-body{max-height:320px;overflow:auto;margin-bottom:8px}
+.report-table{width:100%;border-collapse:collapse;font-size:11px}
+.report-table th{
+  text-align:left;font-weight:600;color:#8a7f70;padding:5px 6px;
+  border-bottom:1px solid var(--line);position:sticky;top:0;background:var(--panel);
+}
+.report-table td{padding:5px 6px;border-bottom:1px solid #f1ebe0;color:#5d5549;vertical-align:top}
+.report-table td:nth-child(2){color:var(--ink);font-weight:600;white-space:nowrap}
+.report-table td:nth-child(3){max-width:110px;word-break:break-all}
+.st{white-space:nowrap;font-weight:600}
+.st-filled{color:#4a7c4a}
+.st-filled-low{color:#a5762a}
+.st-skipped{color:#8d8578}
+.st-failed{color:var(--danger)}
+.report-empty,.report-error{margin:6px 0 10px;font-size:11px;color:var(--muted)}
+.report-error{color:var(--danger)}
+.report-sections{margin:0 0 8px;font-size:10px;color:#9a8d7a;line-height:1.7;word-break:break-all}
+.report-reasons{margin:0 0 10px;font-size:10px;color:#a5762a;line-height:1.7;word-break:break-all}
+
+@media(max-width:560px){
+
+  .layout{grid-template-columns:116px minmax(0,1fr)}
+  .category-nav{padding:14px 6px}
+  .nav-item{font-size:11px;padding:8px 6px;gap:4px}
+  .main-panel{padding:20px 13px 35px}
+  .field-grid{grid-template-columns:1fr}
+  .field.wide{grid-column:auto}
+  .section-heading h1{font-size:18px}
+  .topbar{padding:0 12px}
+  .fill-button{font-size:11px;padding:8px 9px}
+}

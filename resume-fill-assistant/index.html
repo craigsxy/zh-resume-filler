@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>简历一键填充助手</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-mark">简</div>
+    <div><strong>求职资料库</strong><small id="panel-version">仅保存在此设备</small></div>
+    <button id="fill-page" class="primary fill-button" type="button">填写当前网页</button>
+  </header>
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
+
+  <section id="report" class="report" hidden aria-label="填充报告">
+    <div class="report-head">
+      <strong>填充报告</strong>
+      <div class="report-actions">
+        <button id="report-copy" class="link-button" type="button">复制诊断</button>
+        <button id="report-close" class="link-button" type="button">收起</button>
+      </div>
+    </div>
+    <div id="report-summary" class="report-summary"></div>
+    <div id="report-body" class="report-body"></div>
+  </section>
+
+  <div class="layout">
+    <nav id="category-nav" class="category-nav" aria-label="资料分类"></nav>
+    <main class="main-panel">
+      <div class="section-heading">
+        <div><p class="eyebrow">我的资料</p><h1 id="section-title">个人信息</h1></div>
+        <button id="add-record" class="secondary" type="button">＋ 添加记录</button>
+      </div>
+      <p id="section-description" class="section-description"></p>
+      <div id="records" class="records"></div>
+      <div id="empty-state" class="empty-state" hidden>还没有填写内容。所有字段均为选填。</div>
+    </main>
+  </div>
+  <footer>填写前请检查资料；助手不会替你提交网申。</footer>
+  <script src="panel.bundle.js"></script>
+</body>
+</html>

@@ -1,0 +1,18 @@
+{
+  "name": "resume-fill-assistant",
+  "version": "2.0.32",
+  "private": true,
+  "type": "module",
+  "description": "简历一键填充助手（浏览器扩展）：按语义槽绑定字段，按控件类型适配写入",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "test": "node scripts/selftest.mjs && node scripts/dom-test.mjs && node scripts/beisen-test.mjs && node scripts/panel-test.mjs",
+    "test:beisen": "node scripts/beisen-test.mjs",
+    "test:panel": "node scripts/panel-test.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "jsdom": "^30.1.3"
+  }
+}
