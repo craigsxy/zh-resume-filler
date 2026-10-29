@@ -233,6 +233,7 @@
         T("户籍所在地", "personal.hukou", ["户籍所在地", "户口所在地", "户籍地", "户口所在地区"]),
         T("手机", "personal.mobile", ["手机", "手机号", "手机号码", "移动电话", "本人手机"]),
         T("邮箱", "personal.email", ["邮箱", "电子邮箱", "邮件", "email", "常用邮箱"]),
+        T("当前所在城市", "personal.currentCity", ["当前所在城市", "现居城市", "所在城市", "目前所在城市", "现居住城市", "当前城市", "现所在城市", "居住城市", "现居住地城市"]),
         T("现居地址", "personal.address", ["现居地址", "现居住地址", "居住地址", "现住址", "目前居住地"]),
         T("通讯地址", "personal.mailingAddress", ["通讯地址", "通信地址", "联系地址", "邮寄地址"]),
         N("身高", "personal.height", ["身高"]),
@@ -240,20 +241,29 @@
         T("紧急联系人", "personal.emergencyContact", ["紧急联系人", "紧急联系人姓名"]),
         T("紧急联系电话", "personal.emergencyPhone", ["紧急联系电话", "紧急联系人电话", "紧急联系人手机"]),
         T("参加高考城市", "personal.gaokaoCity", ["参加高考城市", "高考所在地", "高考省份", "生源地"]),
-        U("照片", "personal.photo", ["照片", "头像", "证件照", "个人照片", "免冠照片"])
+        T("英文名", "personal.englishName", ["英文名", "英文姓名", "英文名字", "englishname"]),
+        U("照片", "personal.photo", ["照片", "头像", "证件照", "个人照片", "免冠照片"]),
+        // 简历附件：网页标签五花八门（「请上传您的简历」被 cleanLabel 去掉"请上传"后是「您的简历」）
+        U("简历附件", "personal.resume", ["简历附件", "简历", "上传简历", "您的简历", "附件简历", "个人简历", "简历文件", "中文简历", "resume", "cv"])
       ]
     },
     {
       id: "intention",
       name: "求职意向",
       multiple: true,
-      sectionKeys: ["求职意向", "应聘意向", "意向信息", "求职期望", "应聘信息", "岗位意向"],
+      sectionKeys: ["求职意向", "应聘意向", "意向信息", "求职期望", "应聘信息", "岗位意向", "申请信息", "投递信息", "职位意向", "求职偏好", "实习意向"],
       fields: [
         T("意向岗位", "intent.position", ["意向岗位", "应聘岗位", "期望职位", "求职岗位", "意向职位", "应聘职位"]),
         T("意向城市", "intent.city", ["意向城市", "期望工作城市", "意向工作地点", "期望城市"]),
         T("意向行业", "intent.industry", ["意向行业", "期望行业"]),
         T("期望薪资", "intent.salary", ["期望薪资", "期望月薪", "薪资要求", "期望薪酬", "期望年薪"]),
-        D("到岗时间", "intent.onboard", "day", ["到岗时间", "可到岗时间", "最快到岗时间", "入职时间"]),
+        D("到岗时间", "intent.onboard", "day", ["到岗时间", "可到岗时间", "最快到岗时间", "入职时间", "最早到岗时间", "预计到岗时间"]),
+        // 实习岗网申的高频问题（辉瑞 / 图谱 tupu360 一类站点都会问）
+        D("最早可实习时间", "intent.internStart", "day", ["最早可实习时间", "毕业前最早可实习时间", "可实习开始时间", "可开始实习时间", "最早实习时间", "可实习时间"]),
+        T("每周实习天数", "intent.daysPerWeek", ["每周实习天数", "每周可出勤天数", "每周可实习天数", "每周出勤天数", "每周到岗天数", "每周可工作天数", "一周可实习天数"]),
+        T("实习时长", "intent.internDuration", ["实习时长", "可实习时长", "实习周期", "可实习月数", "实习期限", "可连续实习时长"]),
+        T("是否服从调剂", "intent.adjust", ["是否服从调剂", "是否服从岗位调剂", "是否接受调剂", "服从调剂", "是否接受调配", "是否服从分配", "是否接受岗位调剂", "是否服从专业调剂"]),
+        T("信息来源", "intent.source", ["信息来源", "招聘信息来源", "你是从哪个渠道获取招聘信息的", "您是从哪个渠道获取招聘信息的", "获知渠道", "了解渠道", "信息获取渠道", "获取招聘信息渠道", "从何处得知招聘信息", "招聘渠道"]),
         E("求职类型", "intent.jobType", "jobType", ["求职类型", "工作性质", "应聘类型"])
       ]
     },
@@ -265,10 +275,13 @@
       fields: [
         // 资料库里按"日"存（能填多细填多细），填到网页时按控件能力自动降级到年月。
         // 有效精度 = min(资料精度, 控件精度)，见 adapters/date.js
-        D("开始时间", "edu.start", "day", ["开始时间", "起始时间", "开始日期", "入学时间", "就读起始时间", "起始年月", "开始年月"]),
-        D("结束时间", "edu.end", "day", ["结束时间", "毕业时间", "结束日期", "毕业年月", "预计毕业时间", "预计毕业年月", "离校时间"]),
+        D("开始时间", "edu.start", "day", ["开始时间", "起始时间", "开始日期", "入学时间", "入学日期", "入学年月", "就读起始时间", "起始年月", "开始年月"]),
+        D("结束时间", "edu.end", "day", ["结束时间", "毕业时间", "结束日期", "毕业日期", "毕业年月", "预计毕业时间", "预计毕业日期", "预计毕业年月", "离校时间", "离校日期"]),
         T("学校名称", "edu.school", ["学校名称", "学校", "毕业院校", "院校", "院校名称", "就读学校"]),
         T("学院名称", "edu.college", ["学院名称", "学院", "所在学院", "院系"]),
+        // 专业类别必须单列：没有它时「专业类别」靠"包含专业"抢走 edu.major，
+        // 真正的「专业名称」反而撞槽被跳过（tupu360 真机快照）
+        T("专业类别", "edu.majorCategory", ["专业类别", "专业类型", "学科门类", "专业大类", "学科类别", "专业所属类别", "最高学历专业类别"]),
         T("专业名称", "edu.major", ["专业名称", "专业", "所学专业", "就读专业"]),
         // 别名里刻意不放"最高学历"：那是 personal.highestDegree 的别名。
         // 教育区块里出现"最高学历"时，靠"包含"打分（最高学历 ⊃ 学历）仍能落到这里。
@@ -298,11 +311,11 @@
       id: "practice",
       name: "在校实践",
       multiple: true,
-      sectionKeys: ["在校实践", "实践经历", "项目经历", "科研经历", "项目经验", "科研及实践"],
+      sectionKeys: ["在校实践", "实践经历", "项目经历", "科研经历", "项目经验", "科研及实践", "实践活动经验", "实践活动", "社会实践", "校内外实践", "实践经验", "活动经历", "科研项目经历"],
       fields: [
-        T("在校科研及实践项目", "prac.project", ["在校科研及实践项目", "项目名称", "实践项目", "科研项目", "项目经历"]),
+        T("在校科研及实践项目", "prac.project", ["在校科研及实践项目", "项目名称", "实践项目", "科研项目", "项目经历", "活动名称", "实践名称", "实践活动名称"]),
         T("担任角色", "prac.role", ["担任角色", "项目角色", "角色"]),
-        A("实践描述", "prac.desc", ["实践描述", "项目描述", "实践内容", "项目内容"]),
+        A("实践描述", "prac.desc", ["实践描述", "项目描述", "实践内容", "项目内容", "活动描述", "活动内容", "经历描述"]),
         D("开始时间", "prac.start", "day", ["开始时间", "起始时间", "开始日期"]),
         D("结束时间", "prac.end", "day", ["结束时间", "结束日期", "完成时间"])
       ]
@@ -311,11 +324,11 @@
       id: "awards",
       name: "获奖情况",
       multiple: true,
-      sectionKeys: ["获奖情况", "获奖经历", "荣誉奖励", "获奖信息", "奖励情况", "荣誉奖项"],
+      sectionKeys: ["获奖情况", "获奖经历", "荣誉奖励", "获奖信息", "奖励情况", "荣誉奖项", "获奖经验", "奖励荣誉", "所获荣誉", "荣誉证书", "获奖记录"],
       fields: [
         E("获奖级别", "award.level", "awardLevel", ["获奖级别", "奖项级别", "奖励级别"]),
-        T("奖项", "award.name", ["奖项", "奖项名称", "获奖名称", "获奖情况"]),
-        D("获奖时间", "award.time", "day", ["获奖时间", "获奖日期", "获奖年月"])
+        T("奖项", "award.name", ["奖项", "奖项名称", "获奖名称", "获奖情况", "荣誉名称", "奖励名称", "所获奖项"]),
+        D("获奖时间", "award.time", "day", ["获奖时间", "获奖日期", "获奖年月", "获得时间", "获奖年份"])
       ]
     },
     {
@@ -332,24 +345,26 @@
       id: "internships",
       name: "实习经历",
       multiple: true,
-      sectionKeys: ["实习经历", "工作经历", "实习经验", "实习情况", "职业经历", "实习及工作经历"],
+      sectionKeys: ["实习经历", "工作经历", "实习经验", "实习情况", "职业经历", "实习及工作经历", "实习工作经历", "工作经验"],
       fields: [
-        D("开始时间", "exp.start", "day", ["开始时间", "起始时间", "开始日期", "入职时间"]),
-        D("结束时间", "exp.end", "day", ["结束时间", "结束日期", "离职时间"]),
-        T("单位名称", "exp.company", ["单位名称", "公司名称", "实习单位", "实习公司", "工作单位"]),
-        T("实习地点", "exp.location", ["实习地点", "实习城市", "工作地点"]),
-        A("实习内容", "exp.desc", ["实习内容", "工作内容", "实习描述", "工作描述", "实习职责"])
+        D("开始时间", "exp.start", "day", ["开始时间", "起始时间", "开始日期", "入职时间", "入职日期", "实习开始日期", "实习开始时间"]),
+        D("结束时间", "exp.end", "day", ["结束时间", "结束日期", "离职时间", "离职日期", "实习结束日期", "实习结束时间"]),
+        T("单位名称", "exp.company", ["单位名称", "公司名称", "实习单位", "实习公司", "工作单位", "公司/组织名称", "组织名称", "企业名称", "实习单位名称", "公司/单位名称", "单位/公司名称"]),
+        T("实习岗位", "exp.position", ["实习岗位", "实习岗位名称", "岗位名称", "职位名称", "实习职位", "担任职位", "岗位", "职位", "所任职位"]),
+        T("所在部门", "exp.department", ["所在部门", "部门", "实习部门", "任职部门"]),
+        T("实习地点", "exp.location", ["实习地点", "实习城市", "工作地点", "工作城市"]),
+        A("实习内容", "exp.desc", ["实习内容", "工作内容", "实习描述", "工作描述", "实习职责", "工作职责", "实习工作职责/内容", "实习职责/内容", "工作职责/内容", "主要职责", "职责描述", "工作内容描述"])
       ]
     },
     {
       id: "languages",
       name: "语言能力",
       multiple: true,
-      sectionKeys: ["语言能力", "外语水平", "语言水平", "语言证书"],
+      sectionKeys: ["语言能力", "外语水平", "语言水平", "语言证书", "英语水平", "外语能力", "语言技能", "英语能力", "外语等级"],
       fields: [
         T("语言能力", "lang.name", ["语言能力", "语种", "语言"]),
-        E("证书类型", "lang.certType", "certType", ["证书类型", "语言证书", "证书名称", "考试类型"]),
-        T("语言成绩", "lang.score", ["语言成绩", "分数", "成绩", "等级"])
+        E("证书类型", "lang.certType", "certType", ["证书类型", "语言证书", "证书名称", "考试类型", "英语等级", "外语等级", "语言等级", "考试名称", "英语证书"]),
+        T("语言成绩", "lang.score", ["语言成绩", "分数", "成绩", "等级", "考试成绩", "英语成绩", "分值"])
       ]
     },
     {
@@ -522,9 +537,17 @@
   var DENY_ALIAS = {
     "personal.highestDegree": ["学历", "学位", "学历层次", "培养层次", "毕业学历"]
   };
+  var DENY_RE = {
+    "personal.highestDegree": /专业/,
+    "edu.degreeLevel": /专业/,
+    // 专业类别的标签一定带"类/门"（专业类别 / 学科门类 / 专业大类）；
+    // 否则「最高学历」会因为"被最高学历专业类别包含"而和学历打成平手
+    "edu.majorCategory": /^[^类门]*$/
+  };
   for (const c of CATEGORIES) {
     for (const f of c.fields) {
       if (DENY_ALIAS[f.slot]) f.deny = DENY_ALIAS[f.slot];
+      if (DENY_RE[f.slot]) f.denyRe = DENY_RE[f.slot];
     }
   }
   var FIELD_BY_SLOT = /* @__PURE__ */ new Map();
@@ -543,7 +566,7 @@
     positions: ["pos.name"],
     awards: ["award.name"],
     publications: ["pub.name"],
-    languages: ["lang.name"],
+    languages: ["lang.name", "lang.certType"],
     family: ["family.name"],
     intention: ["intent.position"]
   };
@@ -616,11 +639,11 @@
     for (const c of node.childNodes) if (c.nodeType === 3) t += c.textContent;
     return t.replace(/\s+/g, " ").trim();
   }
-  function looksLikeLabel(t) {
+  function looksLikeLabel(t, maxLen = 12) {
     const s = String(t || "").replace(/\s+/g, "");
     if (!s) return false;
     const len = [...s].length;
-    if (len < 1 || len > 12) return false;
+    if (len < 1 || len > maxLen) return false;
     if (/^[\d.\-/年月日]+$/.test(s)) return false;
     if (/^(请选择|请输入|请填写|请上传|选填|必填|请输入内容|暂无)$/.test(s)) return false;
     return /[\u4e00-\u9fa5]/.test(s);
@@ -634,16 +657,22 @@
     if (!/^[A-Za-z][A-Za-z0-9_+#.\-]*$/.test(s)) return false;
     return !LATIN_LABEL_STOP.test(s);
   }
+  function isExplicitLabel(n) {
+    if (!n || !n.tagName) return false;
+    if (n.tagName === "LABEL") return true;
+    return /label/i.test(String(n.className || ""));
+  }
   function labelTextsOf(node, el) {
     const out = [];
     if (!node) return out;
     if (node === document.body || node === document.documentElement) return out;
-    const add = (t, allowLatin = false) => {
+    const add = (t, allowLatin = false, allowLong = false) => {
       const s = cleanLabel(t);
       if (looksLikeLabel(s) || allowLatin && looksLikeLatinLabel(s)) {
         out.push(s);
         return;
       }
+      if (allowLong && looksLikeLabel(s, 30)) out.push(s);
       const cut = String(s).split(/[\s，,。；;：:（(【[|/]+/).map((x) => cleanLabel(x)).find((x) => x && (looksLikeLabel(x) || allowLatin && looksLikeLatinLabel(x)));
       if (cut) out.push(cut);
     };
@@ -652,7 +681,7 @@
         if (n.contains(el)) continue;
         if (isOptionish(n)) continue;
         if (countFields(n) > 0) continue;
-        add(shortText(n, 24), true);
+        add(shortText(n, 40), true, isExplicitLabel(n));
       }
     } catch (_) {
     }
@@ -724,8 +753,11 @@
     const r = matchSection(t);
     if (r) return { title: t, ...r };
     if (looksLikeSectionTitle(t)) return { title: t, categoryId: null };
-    const seg = String(t).split(/[\s|｜·•—–\-\/]+/).map((x) => cleanLabel(x)).find((x) => x && [...x].length <= 12 && looksLikeSectionTitle(x));
-    if (seg) return { title: seg, categoryId: null };
+    const seg = String(t).split(/[\s|｜·•—–\-\/]+/).map((x) => cleanLabel(x)).find((x) => x && [...x].length <= 12 && (matchSection(x) || looksLikeSectionTitle(x)));
+    if (seg) {
+      const r2 = matchSection(seg);
+      return r2 ? { title: seg, ...r2 } : { title: seg, categoryId: null };
+    }
     return null;
   }
   function sectionTitleOf(node) {
@@ -738,14 +770,14 @@
     }
     for (const h of heads) {
       const r = pickSectionFromText(shortText(h, 40));
-      if (r) return r;
+      if (r) return { ...r, strong: true };
     }
     for (const k of node.children) {
       if (countFields(k) > 0) continue;
       const cls = String(k.className || "");
       if (!/(title|header|head|caption|legend)/i.test(cls)) continue;
       const r = pickSectionFromText(shortText(k, 40));
-      if (r) return r;
+      if (r) return SECTION_HEAD_RE.test(cls) ? { ...r, strong: true } : r;
     }
     const own = ownText(node);
     if (own) {
@@ -778,13 +810,15 @@
     }
     return null;
   }
+  var SECTION_HEAD_RE = /(section|card|module|part|group|block|panel|area|step)[-_]?(title|header|head|caption)|(title|header|head)[-_]?(section|card|module|wrapper|wrap|bar)/i;
   function sectionOf(container) {
     let node = container.parentElement;
     let depth = 0;
     while (node && node !== document.body && depth < 16) {
-      if (countFields(node) >= 2) {
+      const n = countFields(node);
+      if (n >= 1) {
         const t = sectionTitleOf(node);
-        if (t) return { title: t.title, categoryId: t.categoryId, container: node };
+        if (t && (n >= 2 || t.strong)) return { title: t.title, categoryId: t.categoryId, container: node };
       }
       node = node.parentElement;
       depth++;
@@ -1210,6 +1244,108 @@
     return { sections, fieldCount: fields.length };
   }
 
+  // src/resolver.js
+  var OPTION_MIN_SCORE = 0.82;
+  var OPTION_MIN_MARGIN = 0.05;
+  var PLACEHOLDER_RE = /^(请选择|请选择一项|全部|不限|--+|—+|-+|无数据|暂无)$/;
+  function resolveValue(raw, enumRef) {
+    const text = String(raw ?? "").trim();
+    if (!text) return null;
+    const n = normalize(text);
+    const dict = enumRef ? ENUMS[enumRef] : null;
+    const labels = [text];
+    let code = null;
+    let confidence = 0.6;
+    if (dict) {
+      for (const [c, syns] of Object.entries(dict)) {
+        if (syns.some((s) => normalize(s) === n)) {
+          code = c;
+          labels.push(...syns);
+          confidence = 1;
+          break;
+        }
+      }
+      if (!code) {
+        let best = null;
+        for (const [c, syns] of Object.entries(dict)) {
+          for (const s of syns) {
+            const sn = normalize(s);
+            if (!sn || [...sn].length < 2) continue;
+            let sc = 0;
+            if (n.includes(sn) || sn.includes(n)) {
+              const ratio = Math.min(sn.length, n.length) / Math.max(sn.length, n.length);
+              sc = 0.88 + 0.1 * ratio;
+            } else {
+              const d = charDice(n, sn);
+              if (d >= 0.6) sc = d * 0.85;
+            }
+            if (sc > 0 && (!best || sc > best.sc)) best = { c, syns, sc };
+          }
+        }
+        if (best && best.sc >= 0.8) {
+          code = best.c;
+          labels.push(...best.syns);
+          confidence = best.sc;
+        }
+      }
+    }
+    return { code, labels: [...new Set(labels)], raw: text, confidence };
+  }
+  function matchOption(plan, options) {
+    if (!plan) return { ok: false, reason: "no-value", ranked: [] };
+    const labels = (plan.labels || []).map(normalize).filter(Boolean);
+    const rawN = normalize(plan.raw || "");
+    const pool = (options || []).filter((o) => {
+      const t = normalize(o.label);
+      return t && !PLACEHOLDER_RE.test(t);
+    });
+    if (!pool.length) return { ok: false, reason: "no-options", ranked: [] };
+    const scored = pool.map((o) => {
+      const ot = normalize(o.label);
+      const ov = normalize(o.value == null ? "" : String(o.value));
+      let score = 0;
+      for (const lb of labels) {
+        if (!lb) continue;
+        let s = 0;
+        if (ot === lb) s = 1;
+        else if (ot.includes(lb) && lb.length >= 2) {
+          s = 0.9 + 0.08 * (lb.length / Math.max(ot.length, lb.length));
+        } else if (lb.includes(ot) && ot.length >= 2) {
+          s = 0.88 + 0.08 * (ot.length / Math.max(ot.length, lb.length));
+        } else {
+          const d = charDice(ot, lb);
+          if (d >= 0.62) s = d * 0.85;
+        }
+        if (s > score) score = s;
+      }
+      if (ov && ov === rawN) score = Math.max(score, 0.95);
+      return { ...o, score };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const exacts = scored.filter((o) => {
+      const ot = normalize(o.label);
+      return labels.includes(ot) || rawN && ot === rawN;
+    });
+    if (exacts.length === 1) {
+      return { ok: true, option: exacts[0], score: 1, ranked: scored.slice(0, 5) };
+    }
+    const top = scored[0];
+    const second = scored[1];
+    if (!top || top.score < OPTION_MIN_SCORE) {
+      return { ok: false, reason: "option-no-match", ranked: scored.slice(0, 5) };
+    }
+    if (second && top.score - second.score < OPTION_MIN_MARGIN - 1e-6 && normalize(second.label) !== normalize(top.label)) {
+      return { ok: false, reason: "option-ambiguous", ranked: scored.slice(0, 5) };
+    }
+    return { ok: true, option: top, score: top.score, ranked: scored.slice(0, 5) };
+  }
+  function sameOption(readback, optionLabel) {
+    const a = normalize(readback);
+    const b = normalize(optionLabel);
+    if (!a || !b) return false;
+    return a === b || a.includes(b) || b.includes(a);
+  }
+
   // src/binder.js
   var SLOT_MIN_SCORE = 0.78;
   var SLOT_MIN_MARGIN = 0.06;
@@ -1217,6 +1353,7 @@
     const p = normalize(part);
     if (!p) return 0;
     if (field.deny && field.deny.some((d) => normalize(d) === p)) return 0;
+    if (field.denyRe && field.denyRe.test(p)) return 0;
     let best = 0;
     for (const alias of field.alias) {
       const an = normalize(alias);
@@ -1247,7 +1384,7 @@
       const p = normalize(clean[i]);
       if (!p) continue;
       for (const c of candidates) {
-        const denied = c.field.deny && c.field.deny.some((d) => normalize(d) === p);
+        const denied = c.field.deny && c.field.deny.some((d) => normalize(d) === p) || c.field.denyRe && c.field.denyRe.test(p);
         if (!denied && c.field.alias.some((a) => normalize(a) === p)) exactHits.push({ c, i });
       }
     }
@@ -1454,6 +1591,20 @@
     }
     return void 0;
   }
+  var DEGREE_RANK = { HIGH_SCHOOL: 1, VOCATIONAL: 1, ASSOCIATE: 2, BACHELOR: 3, MASTER: 4, DOCTOR: 5 };
+  function highestDegreeIndex(records) {
+    let best = -1;
+    let bestRank = 0;
+    records.forEach((r, i) => {
+      const res = r ? resolveValue(r["学历"], "degreeLevel") : null;
+      const rank = res && DEGREE_RANK[res.code] || 0;
+      if (rank > bestRank) {
+        bestRank = rank;
+        best = i;
+      }
+    });
+    return best;
+  }
   function bind(model, profile) {
     const plans = [];
     const sections = (model && Array.isArray(model.sections) ? model.sections : []).filter(
@@ -1469,7 +1620,14 @@
       const candidates = [...builtinCandidates, ...customs];
       const assign = alignBlocks(section.blocks, records, category || { id: "" }, candidates);
       for (const block of section.blocks) {
-        const ri = assign.has(block.index) ? assign.get(block.index) : null;
+        let ri = assign.has(block.index) ? assign.get(block.index) : null;
+        if (category && category.id === "education" && records.length > 1 && section.blocks.length === 1) {
+          const asksHighest = (block.fields || []).some((f) => /最高学历/.test((f.labelParts || []).join(" ")));
+          if (asksHighest) {
+            const hi = highestDegreeIndex(records);
+            if (hi >= 0) ri = hi;
+          }
+        }
         const record = ri != null ? records[ri] || {} : null;
         const seen = /* @__PURE__ */ new Set();
         for (const field of block.fields || []) {
@@ -1538,7 +1696,10 @@
               value: rawValue == null ? "" : rawValue,
               matchScore: m ? m.score : 0,
               hasRecord,
-              ...weak ? { weak: true } : {}
+              ...weak ? { weak: true } : {},
+              // 卡片式录入要回到"这张卡"点确认（见 cards.js），留引用，不进报告
+              section,
+              block
             })
           );
         }
@@ -1593,7 +1754,13 @@
   }
   function findAddButton(section, category) {
     const names = [category.name, ...category.sectionKeys || []].filter(Boolean);
-    const named = (list) => list.filter((x) => names.some((n) => x.text.includes(n))).sort((a, b) => a.text.length - b.text.length)[0];
+    const named = (list) => {
+      const hits = list.filter((x) => names.some((n) => x.text.includes(n)));
+      if (!hits.length) return void 0;
+      const minLen = Math.min(...hits.map((x) => x.text.length));
+      const shortest = hits.filter((x) => x.text.length === minLen);
+      return shortest[shortest.length - 1];
+    };
     const areas = [section.container, section.container && section.container.parentElement].filter(Boolean);
     for (const area of areas) {
       const hit = named(candidatesIn(area));
@@ -1621,6 +1788,13 @@
     }
     return null;
   }
+  function hasLocalAdd(section) {
+    const category = section && section.categoryId ? categoryById(section.categoryId) : null;
+    if (!category || !section.container) return false;
+    const names = [category.name, ...category.sectionKeys || []].filter(Boolean);
+    const areas = [section.container, section.container.parentElement].filter(Boolean);
+    return areas.some((a) => candidatesIn(a).some((x) => x.kind === "text" && names.some((n) => x.text.includes(n))));
+  }
   async function dismissDialogIfAny() {
     const dialogs = [...document.querySelectorAll('[role="dialog"],[class*="modal"],[class*="Modal"],[class*="dialog"]')].filter(
       isVisible
@@ -1644,9 +1818,18 @@
     return true;
   }
   function pickTarget(model, profile, skip) {
+    const rep = /* @__PURE__ */ new Map();
+    for (const s of model.sections || []) {
+      if (!s.categoryId) continue;
+      const cur = rep.get(s.categoryId);
+      const n = (s.blocks || []).length;
+      const m = cur ? (cur.blocks || []).length : -1;
+      if (!cur || n > m || n === m && !hasLocalAdd(cur) && hasLocalAdd(s)) rep.set(s.categoryId, s);
+    }
     for (const section of model.sections || []) {
       const category = section.categoryId ? categoryById(section.categoryId) : null;
       if (!category || !category.multiple || category.custom) continue;
+      if (rep.get(category.id) !== section) continue;
       if (skip && skip.has(category.id)) continue;
       const records = usableRecords(profile, category);
       const have = (section.blocks || []).length;
@@ -1654,6 +1837,16 @@
       const btn = findAddButton(section, category);
       if (!btn) continue;
       return { section, category, btn, need: records.length - have, have };
+    }
+    const present = new Set((model.sections || []).map((s) => s.categoryId).filter(Boolean));
+    for (const category of CATEGORIES) {
+      if (!category.multiple || category.custom || present.has(category.id)) continue;
+      if (skip && skip.has(category.id)) continue;
+      const records = usableRecords(profile, category);
+      if (!records.length) continue;
+      const btn = findAddButton({ container: null, blocks: [] }, category);
+      if (!btn || btn.kind !== "text") continue;
+      return { section: { title: category.name, categoryId: category.id, blocks: [] }, category, btn, need: records.length, have: 0 };
     }
     return null;
   }
@@ -1769,108 +1962,6 @@
       ok = normalize(rb) === normalize(value) || rb && normalize(rb).includes(normalize(value));
     }
     return ok ? { status: "filled", via: "native", readback: rb, ...note ? { note } : {} } : { status: "failed", reason: "readback-mismatch", readback: rb, expected: value };
-  }
-
-  // src/resolver.js
-  var OPTION_MIN_SCORE = 0.82;
-  var OPTION_MIN_MARGIN = 0.05;
-  var PLACEHOLDER_RE = /^(请选择|请选择一项|全部|不限|--+|—+|-+|无数据|暂无)$/;
-  function resolveValue(raw, enumRef) {
-    const text = String(raw ?? "").trim();
-    if (!text) return null;
-    const n = normalize(text);
-    const dict = enumRef ? ENUMS[enumRef] : null;
-    const labels = [text];
-    let code = null;
-    let confidence = 0.6;
-    if (dict) {
-      for (const [c, syns] of Object.entries(dict)) {
-        if (syns.some((s) => normalize(s) === n)) {
-          code = c;
-          labels.push(...syns);
-          confidence = 1;
-          break;
-        }
-      }
-      if (!code) {
-        let best = null;
-        for (const [c, syns] of Object.entries(dict)) {
-          for (const s of syns) {
-            const sn = normalize(s);
-            if (!sn || [...sn].length < 2) continue;
-            let sc = 0;
-            if (n.includes(sn) || sn.includes(n)) {
-              const ratio = Math.min(sn.length, n.length) / Math.max(sn.length, n.length);
-              sc = 0.88 + 0.1 * ratio;
-            } else {
-              const d = charDice(n, sn);
-              if (d >= 0.6) sc = d * 0.85;
-            }
-            if (sc > 0 && (!best || sc > best.sc)) best = { c, syns, sc };
-          }
-        }
-        if (best && best.sc >= 0.8) {
-          code = best.c;
-          labels.push(...best.syns);
-          confidence = best.sc;
-        }
-      }
-    }
-    return { code, labels: [...new Set(labels)], raw: text, confidence };
-  }
-  function matchOption(plan, options) {
-    if (!plan) return { ok: false, reason: "no-value", ranked: [] };
-    const labels = (plan.labels || []).map(normalize).filter(Boolean);
-    const rawN = normalize(plan.raw || "");
-    const pool = (options || []).filter((o) => {
-      const t = normalize(o.label);
-      return t && !PLACEHOLDER_RE.test(t);
-    });
-    if (!pool.length) return { ok: false, reason: "no-options", ranked: [] };
-    const scored = pool.map((o) => {
-      const ot = normalize(o.label);
-      const ov = normalize(o.value == null ? "" : String(o.value));
-      let score = 0;
-      for (const lb of labels) {
-        if (!lb) continue;
-        let s = 0;
-        if (ot === lb) s = 1;
-        else if (ot.includes(lb) && lb.length >= 2) {
-          s = 0.9 + 0.08 * (lb.length / Math.max(ot.length, lb.length));
-        } else if (lb.includes(ot) && ot.length >= 2) {
-          s = 0.88 + 0.08 * (ot.length / Math.max(ot.length, lb.length));
-        } else {
-          const d = charDice(ot, lb);
-          if (d >= 0.62) s = d * 0.85;
-        }
-        if (s > score) score = s;
-      }
-      if (ov && ov === rawN) score = Math.max(score, 0.95);
-      return { ...o, score };
-    });
-    scored.sort((a, b) => b.score - a.score);
-    const exacts = scored.filter((o) => {
-      const ot = normalize(o.label);
-      return labels.includes(ot) || rawN && ot === rawN;
-    });
-    if (exacts.length === 1) {
-      return { ok: true, option: exacts[0], score: 1, ranked: scored.slice(0, 5) };
-    }
-    const top = scored[0];
-    const second = scored[1];
-    if (!top || top.score < OPTION_MIN_SCORE) {
-      return { ok: false, reason: "option-no-match", ranked: scored.slice(0, 5) };
-    }
-    if (second && top.score - second.score < OPTION_MIN_MARGIN - 1e-6 && normalize(second.label) !== normalize(top.label)) {
-      return { ok: false, reason: "option-ambiguous", ranked: scored.slice(0, 5) };
-    }
-    return { ok: true, option: top, score: top.score, ranked: scored.slice(0, 5) };
-  }
-  function sameOption(readback, optionLabel) {
-    const a = normalize(readback);
-    const b = normalize(optionLabel);
-    if (!a || !b) return false;
-    return a === b || a.includes(b) || b.includes(a);
   }
 
   // src/adapters/radio.js
@@ -2119,7 +2210,31 @@
     }
     return out.slice(0, 3);
   }
+  function ariaPanelOf(trigger) {
+    const hosts = [trigger];
+    try {
+      const box = trigger.closest && trigger.closest('[role="combobox"],[aria-haspopup]');
+      if (box && box !== trigger) hosts.push(box);
+      const inner = trigger.querySelector && trigger.querySelector('[role="combobox"],[aria-controls],[aria-owns]');
+      if (inner) hosts.push(inner);
+    } catch (_) {
+    }
+    for (const h of hosts) {
+      for (const attr of ["aria-controls", "aria-owns"]) {
+        const ids = String(h.getAttribute && h.getAttribute(attr) || "").split(/\s+/).filter(Boolean);
+        for (const id of ids) {
+          const el = document.getElementById(id);
+          if (!el || !isVisible(el) || el.contains(trigger)) continue;
+          if (collectPanelOptions(el).length < 1) continue;
+          return el;
+        }
+      }
+    }
+    return null;
+  }
   function findOptionPanel(trigger, snap, before) {
+    const byAria = ariaPanelOf(trigger);
+    if (byAria) return popupRootOf(growToOptions(byAria), trigger);
     const bySel = findPanelBySelector(trigger, before);
     if (bySel) return popupRootOf(growToOptions(bySel), trigger);
     if (!snap) return null;
@@ -3994,8 +4109,26 @@
   async function writeUpload(plan) {
     const v = plan.value;
     if (!v || typeof v !== "object" || !v.dataUrl) return { status: "skipped", reason: "no-photo" };
-    const input = plan.field.el;
-    if (!input || input.type !== "file") return { status: "skipped", reason: "not-file-input" };
+    let input = plan.field.el;
+    if (!input || input.type !== "file") {
+      const box = plan.field.container;
+      let near = null;
+      for (let n = box, d = 0; n && !near && d < 3; n = n.parentElement, d++) {
+        try {
+          const all = n.querySelectorAll('input[type="file"]');
+          if (all.length === 1) near = all[0];
+        } catch (_) {
+        }
+      }
+      if (!near) return { status: "skipped", reason: "not-file-input" };
+      input = near;
+    }
+    const accept = String(input.getAttribute("accept") || "").toLowerCase();
+    const mime = String(v.type || "").toLowerCase();
+    if (accept && mime) {
+      const okAccept = accept.split(",").map((x) => x.trim()).some((a) => a === mime || a.endsWith("/*") && mime.startsWith(a.slice(0, -1)) || a.startsWith(".") && String(v.name || "").toLowerCase().endsWith(a));
+      if (!okAccept) return { status: "skipped", reason: "upload-type-mismatch" };
+    }
     try {
       const blob = dataUrlToBlob(v.dataUrl);
       const file = new File([blob], v.name || "photo.jpg", { type: v.type || blob.type || "image/jpeg" });
@@ -4029,6 +4162,215 @@
     if (ck === "SELECT_NATIVE") return writeSelectNative(plan);
     if (ck === "SELECT_CUSTOM" || ck === "PICKER") return writeSelectCustom(plan);
     return writeText(plan);
+  }
+
+  // src/cards.js
+  var FIELD_SEL2 = 'input, textarea, select, [contenteditable="true"], [role="combobox"]';
+  var BTN_SEL = 'button,[role="button"],a,[class*="btn"],[class*="Btn"],[class*="button"]';
+  var COMMIT_RE = /^(确认|确定|保存|完成|保存并关闭|确认保存|ok|save|confirm|done)$/i;
+  var CANCEL_RE = /^(取消|放弃|cancel)$/i;
+  var NEVER_RE = /(提交|投递|申请|报名|submit|apply)/i;
+  var ERROR_SEL = '.ant-form-explain,.ant-form-item-explain,.el-form-item__error,.ivu-form-item-error-tip,[class*="error-tip"],[class*="errorTip"],[class*="error-msg"],[class*="errorMsg"],[class*="form-error"]';
+  var btnText = (el) => String(el && el.textContent || "").replace(/\s+/g, "").trim();
+  function editableFieldsIn(root) {
+    if (!root || !root.querySelectorAll) return [];
+    return [...root.querySelectorAll(FIELD_SEL2)].filter((el) => {
+      if (el.disabled) return false;
+      if (el.tagName === "INPUT" && /^(hidden|submit|button|reset|image)$/i.test(el.type || "")) return false;
+      return true;
+    });
+  }
+  function insideControl(node, stop) {
+    let n = node.parentElement;
+    for (let d = 0; n && n !== stop && d < 5; d++, n = n.parentElement) {
+      if (n.matches && n.matches(FIELD_SEL2)) return true;
+      if (n.querySelector && n.querySelector(FIELD_SEL2)) return true;
+    }
+    return false;
+  }
+  function readonlyTextOf(area) {
+    if (!area) return "";
+    const doc = area.ownerDocument || document;
+    const walker = doc.createTreeWalker(
+      area,
+      4
+      /* SHOW_TEXT */
+    );
+    let out = "";
+    let n;
+    let guard = 0;
+    while ((n = walker.nextNode()) && guard++ < 5e3) {
+      const t = String(n.textContent || "").trim();
+      if (!t) continue;
+      if (insideControl(n, area)) continue;
+      out += " " + t;
+    }
+    return out;
+  }
+  function areasOf(category, model) {
+    const names = [category.name, ...category.sectionKeys || []].filter(Boolean);
+    const out = /* @__PURE__ */ new Set();
+    for (const s of model && model.sections || []) {
+      if (s.categoryId === category.id && s.container) out.add(s.container);
+    }
+    let btns = [];
+    try {
+      btns = [...document.querySelectorAll(BTN_SEL)].filter((b) => {
+        const t = btnText(b);
+        return t.length <= 20 && /(添加|新增|增加)/.test(t) && names.some((n) => t.includes(n));
+      });
+    } catch (_) {
+    }
+    for (const b of btns) {
+      let n = b.parentElement;
+      for (let d = 0; n && n !== document.body && d < 6; d++, n = n.parentElement) {
+        const heads = n.querySelectorAll('[class*="title"],[class*="Title"],[class*="header"],h1,h2,h3,h4,h5,legend');
+        const hit = [...heads].some((h) => {
+          if (h.contains(b)) return false;
+          const t = normalize(h.textContent).slice(0, 20);
+          return names.some((k) => t.includes(normalize(k)));
+        });
+        if (hit) {
+          out.add(n);
+          break;
+        }
+      }
+    }
+    return [...out];
+  }
+  function variantsOf(field, raw) {
+    const v = String(raw ?? "").trim();
+    if (!v) return [];
+    const out = /* @__PURE__ */ new Set([normalize(v)]);
+    if (field && field.enumRef && ENUMS[field.enumRef]) {
+      const nv = normalize(v);
+      for (const syns of Object.values(ENUMS[field.enumRef])) {
+        if (syns.some((s) => normalize(s) === nv)) syns.forEach((s) => out.add(normalize(s)));
+      }
+    }
+    return [...out].filter((x) => [...x].length >= 2 || /^\d+$/.test(x));
+  }
+  function recordShownIn(text, record, category, strongSlots) {
+    const fields = category.fields.filter((f) => f.kind !== "upload" && f.kind !== "date");
+    const filled = fields.filter((f) => String(record[f.label] ?? "").trim());
+    if (!filled.length) return false;
+    const hit = (f) => variantsOf(f, record[f.label]).some((v) => text.includes(v));
+    const strong = filled.filter((f) => strongSlots.includes(f.slot));
+    if (strong.length) return strong.every(hit);
+    const short = filled.filter((f) => String(record[f.label]).length <= 30);
+    if (!short.length) return false;
+    const n = short.filter(hit).length;
+    return short.length === 1 ? n === 1 : n >= Math.ceil(short.length * 0.6) && n >= 2;
+  }
+  function withoutSavedRecords(profile, model, strongKeys = {}) {
+    const log = [];
+    const saved = [];
+    const next = { ...profile };
+    for (const category of CATEGORIES) {
+      if (!category.multiple || category.custom) continue;
+      const records = profile[category.id];
+      if (!Array.isArray(records) || !records.length) continue;
+      let text = "";
+      try {
+        text = normalize(areasOf(category, model).map(readonlyTextOf).join(" "));
+      } catch (_) {
+        text = "";
+      }
+      if (!text) continue;
+      const keep = [];
+      records.forEach((r, i) => {
+        if (r && typeof r === "object" && recordShownIn(text, r, category, strongKeys[category.id] || [])) {
+          saved.push({ categoryId: category.id, recordIndex: i });
+          log.push(`${category.name} 第 ${i + 1} 段已保存在页面上，不再重复添加`);
+        } else {
+          keep.push(r);
+        }
+      });
+      if (keep.length !== records.length) next[category.id] = keep;
+    }
+    return { profile: next, saved, log };
+  }
+  function cardRootOf(block, section) {
+    const els = (block && block.fields || []).map((f) => f.el).filter(Boolean);
+    if (!els.length) return null;
+    let root = els[0].parentElement;
+    while (root && !els.every((e) => root.contains(e))) root = root.parentElement;
+    if (!root || root === document.body) return null;
+    const others = (section && section.blocks || []).filter((b) => b !== block).flatMap((b) => (b.fields || []).map((f) => f.el));
+    let best = others.some((e) => root.contains(e)) ? null : root;
+    let n = best;
+    for (let d = 0; n && d < 2; d++) {
+      if (findCommitIn(n)) return n;
+      const up = n.parentElement;
+      if (!up || up === document.body || others.some((e) => up.contains(e))) break;
+      n = up;
+    }
+    return best;
+  }
+  function findCommitIn(root) {
+    if (!root || !root.querySelectorAll) return null;
+    let btns = [];
+    try {
+      btns = [...root.querySelectorAll(BTN_SEL)].filter((b) => isVisible(b) && !b.disabled);
+    } catch (_) {
+      return null;
+    }
+    btns = btns.filter((b) => !b.querySelector(FIELD_SEL2));
+    const commit = btns.find((b) => {
+      const t = btnText(b);
+      return t && COMMIT_RE.test(t) && !NEVER_RE.test(t);
+    });
+    if (!commit) return null;
+    const hasCancel = btns.some((b) => CANCEL_RE.test(btnText(b)));
+    return hasCancel ? commit : null;
+  }
+  function errorsIn(root) {
+    if (!root || !root.querySelectorAll) return [];
+    return [...root.querySelectorAll(ERROR_SEL)].filter((e) => isVisible(e)).map((e) => String(e.textContent || "").replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 5);
+  }
+  function committed(root, btn) {
+    if (!root.isConnected) return true;
+    if (!editableFieldsIn(root).some(isVisible)) return true;
+    if (!btn.isConnected || !isVisible(btn)) return true;
+    return false;
+  }
+  async function commitCards(targets) {
+    const rows = [];
+    for (const t of targets) {
+      const root = cardRootOf(t.block, t.section);
+      const btn = root && findCommitIn(root);
+      if (!btn) continue;
+      clickEl(btn);
+      let ok = false;
+      try {
+        ok = await waitFor(() => committed(root, btn), 1200, 80);
+      } catch (_) {
+        ok = committed(root, btn);
+      }
+      await sleep(120);
+      const base = {
+        section: t.section.title || "",
+        categoryId: t.section.categoryId || "",
+        block: t.block.index,
+        label: `「${btnText(btn)}」本段`,
+        slot: "",
+        value: "",
+        kind: "card",
+        controlKind: "CARD_COMMIT"
+      };
+      if (ok) {
+        rows.push({ ...base, status: "filled", via: "card-commit", note: "card-committed" });
+      } else {
+        const errs = errorsIn(root);
+        rows.push({
+          ...base,
+          status: "failed",
+          reason: "card-commit-blocked",
+          note: errs.length ? errs.join("；") : "点了确认但卡片没收起（可能有必填项没填）"
+        });
+      }
+    }
+    return rows;
   }
 
   // src/bridge.js
@@ -4113,6 +4455,14 @@
   }
 
   // src/fill.js
+  var blockIds = /* @__PURE__ */ new WeakMap();
+  var blockSeq = 0;
+  function blockIdOf(plan) {
+    const b = plan.block;
+    if (!b || typeof b !== "object") return `${plan.sectionTitle || ""}#${plan.blockIndex}`;
+    if (!blockIds.has(b)) blockIds.set(b, ++blockSeq);
+    return "b" + blockIds.get(b);
+  }
   function hasValue(v) {
     if (v == null) return false;
     if (typeof v === "object") return Object.keys(v).length > 0;
@@ -4124,8 +4474,15 @@
     let model;
     let plans;
     let expand = { added: 0, log: [] };
+    let savedLog = [];
     try {
       model = buildFormModel();
+      try {
+        const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
+        profile = sv.profile;
+        savedLog = sv.log;
+      } catch (_) {
+      }
       if (options.expand !== false) {
         try {
           const ex = await expandSections(profile, model, options);
@@ -4138,6 +4495,7 @@
           model = buildFormModel();
         }
       }
+      if (savedLog.length) expand = { ...expand, log: [...savedLog, ...expand.log || []] };
       plans = bind(model, profile);
       plans.sort((a, b) => (a.weak ? 1 : 0) - (b.weak ? 1 : 0));
     } catch (e) {
@@ -4156,6 +4514,7 @@
       };
     }
     const results = [];
+    const planResults = /* @__PURE__ */ new Map();
     const seen = /* @__PURE__ */ new Set();
     const filledTexts = [];
     for (const plan of plans) {
@@ -4199,9 +4558,11 @@
         results.push({ ...base, status: "empty" });
         continue;
       }
-      const key = `${plan.categoryId}:${plan.blockIndex}:${plan.slot}`;
-      if (seen.has(key)) continue;
+      const key = `${blockIdOf(plan)}:${plan.categoryId}:${plan.slot}`;
+      const slotKey = `${plan.categoryId}:${plan.blockIndex}:${plan.slot}`;
+      if (seen.has(key) || plan.weak && seen.has(slotKey)) continue;
       seen.add(key);
+      seen.add(slotKey);
       let res;
       try {
         plan.resolved = plan.kind === "upload" ? null : resolveValue(plan.value, plan.enumRef || null);
@@ -4211,6 +4572,7 @@
       }
       const pushed = { ...base, ...res, resolvedCode: plan.resolved && plan.resolved.code || "" };
       results.push(pushed);
+      planResults.set(plan, pushed);
       if (res.status !== "filled") results[results.length - 1].path = pathOf(plan.field.el);
       if (res.status === "filled" && res.via === "native" && (plan.kind === "text" || plan.kind === "number")) {
         filledTexts.push({ plan, res: pushed });
@@ -4283,6 +4645,24 @@
     if (clearedAny) {
       await sleep(1200);
       await recheckCleared(1);
+    }
+    if (options.commitCards !== false) {
+      try {
+        const targets = [];
+        const seenBlocks = /* @__PURE__ */ new Set();
+        plans.forEach((plan, i) => {
+          const r = planResults.get(plan);
+          if (!r || r.status !== "filled" || !plan.block || !plan.section) return;
+          const cat = categoryById(plan.section.categoryId || plan.categoryId);
+          if (!cat || !cat.multiple) return;
+          if (seenBlocks.has(plan.block)) return;
+          seenBlocks.add(plan.block);
+          targets.push({ section: plan.section, block: plan.block, order: i });
+        });
+        results.push(...await commitCards(targets));
+      } catch (e) {
+        results.push({ section: "", label: "卡片确认", status: "failed", reason: "exception:" + String(e && e.message || e).slice(0, 80) });
+      }
     }
     return summarize(withCustomDiagnostics(profile, model, results), model, expand);
   }

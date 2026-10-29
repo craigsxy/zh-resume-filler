@@ -4,12 +4,18 @@
 
 Chrome Manifest V3 扩展：本地管理求职资料，按「语义槽」绑定网申字段、按控件类型适配写入。无法匹配的选项自动跳过，不写脏值、不自动提交。
 
+不绑定某一家网申系统：区块、标签、控件类型都是通用识别，已按真机结构验证过北森（Phoenix）、
+图谱 tupu360（Ant Design Vue，辉瑞校招等）的页面形态，antd / Element / iView 一类组件库的下拉、日期、单选都走同一套适配器。
+
 ## 功能
 
 - 资料仅保存在本机浏览器（`chrome.storage.local`），不上传云端
 - 多段经历（教育 / 实习 / 在校职务 / 在校实践…）自动「添加」出第 n 段
 - 日期按网页能力自动降级（先试年月日，网页只收年月就写年月）
 - 枚举字段做选项适配，覆盖虚拟滚动列表、级联选择、年月选择器、可编辑下拉等真机形态
+- 卡片式录入：多段经历「添加 → 编辑卡 → 确认」自动走完，已保存的只读卡片不会被重复添加
+- 整句问题当标签（「是否服从岗位调剂」「你是从哪个渠道获取招聘信息的」）：没有内置字段的，用自定义字段照抄网页标签即可
+- 简历附件 / 照片上传（原生文件控件）
 - 收尾复核：防止站点写入后又二次清空（如身份证号）
 
 ## 加载方式
@@ -24,7 +30,7 @@ Chrome Manifest V3 扩展：本地管理求职资料，按「语义槽」绑定�
 ```bash
 npm install        # 安装依赖（esbuild + jsdom）
 npm run build      # 打包 src/ → content.bundle.js / panel.bundle.js
-npm test           # 全量回归：selftest / dom-test / beisen / panel
+npm test           # 全量回归：selftest / dom-test / beisen / panel / tupu
 npm run watch      # 监听 src/ 改动自动重打包
 ```
 
@@ -33,8 +39,8 @@ npm run watch      # 监听 src/ 改动自动重打包
 ## 目录结构
 
 - `manifest.json` / `background.js` / `index.html` / `styles.css` / `icons/` —— 扩展骨架
-- `src/` —— 源码：`content-entry.js`（内容脚本入口）、`panel/`（侧边栏）、`adapters/`（按控件类型分派的适配器）、`binder.js`（标签→语义槽绑定）、`fill.js`、`repeat.js`（多段扩充）…
+- `src/` —— 源码：`content-entry.js`（内容脚本入口）、`panel/`（侧边栏）、`adapters/`（按控件类型分派的适配器）、`binder.js`（标签→语义槽绑定）、`fill.js`、`repeat.js`（多段扩充）、`cards.js`（卡片确认 / 已保存去重）…
 - `content.bundle.js` / `panel.bundle.js` —— 构建产物（clone 后直接加载即可用）
 - `main-world.js` —— 注入页面主世界、与内容脚本通信的桥
-- `scripts/` —— 测试脚本（`site-replica.mjs` / `ym-replica.mjs` 是真机 DOM 结构复刻）
+- `scripts/` —— 测试脚本（`site-replica.mjs` / `ym-replica.mjs` 是真机 DOM 结构复刻；`tupu-test.mjs` 用 `fixtures/` 里的真机快照做端到端；`tupu-probe.mjs` 打印扫描/绑定结果，适配新站点时先跑它）
 - `docs/` —— 技术方案与测试说明

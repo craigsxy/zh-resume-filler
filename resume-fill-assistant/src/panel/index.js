@@ -106,6 +106,12 @@ function addTag(label, text) {
  * 两边语义对不齐反而增加"我以为选对了"的误判。词表仍然保留在
  * schema/resolver 里，只用于填充时做同义词归一（填"傣"也能对上"傣族"）。
  */
+const DOC_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
 function createField(field, record) {
   const wrap = document.createElement('div');
   wrap.className = 'field' + (field.kind === 'textarea' ? ' wide' : '');
@@ -114,6 +120,8 @@ function createField(field, record) {
   label.textContent = field.label;
 
   const isPhoto = field.kind === 'upload';
+  // 上传字段分两种：照片（图片）和简历附件（PDF / Word）
+  const isDoc = isPhoto && field.slot === 'personal.resume';
   const el =
     field.kind === 'textarea'
       ? document.createElement('textarea')
@@ -123,7 +131,9 @@ function createField(field, record) {
   if (el.tagName === 'INPUT') {
     if (isPhoto) {
       el.type = 'file';
-      el.accept = 'image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp';
+      el.accept = isDoc
+        ? 'application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx'
+        : 'image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp';
     } else if (field.kind === 'date') {
       // 所有日期字段都是日粒度（v2.0.19）：和"出生日期"完全同一种处理，不再有"年月"输入框
       el.type = 'date';
@@ -159,7 +169,14 @@ function createField(field, record) {
     el.onchange = () => {
       const file = el.files && el.files[0];
       if (!file) return;
-      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      if (isDoc) {
+        const okType = DOC_TYPES.includes(file.type) || /\.(pdf|docx?)$/i.test(file.name || '');
+        if (!okType || file.size > 8 * 1024 * 1024) {
+          el.value = '';
+          showNotice('请选择 8MB 以内的 PDF、DOC 或 DOCX 简历。', true);
+          return;
+        }
+      } else if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
         el.value = '';
         showNotice('请选择 5MB 以内的 JPG、JPEG、PNG 或 WEBP 图片。', true);
         return;
@@ -189,7 +206,12 @@ function createField(field, record) {
     wrap.append(warn);
   }
   const current = record[field.label];
-  if (isPhoto && current && current.dataUrl) {
+  if (isDoc && current && current.dataUrl) {
+    const note = document.createElement('p');
+    note.className = 'section-description';
+    note.textContent = `已选：${current.name || '简历'}`;
+    wrap.append(note);
+  } else if (isPhoto && current && current.dataUrl) {
     const preview = document.createElement('img');
     preview.src = current.dataUrl;
     preview.alt = '已选照片';
@@ -492,8 +514,10 @@ const REASON_TEXT = {
   'value-not-a-date': '资料值不是合法日期',
   'readback-mismatch': '写入后回读不一致',
   'no-el': '找不到控件',
-  'no-photo': '资料库未上传照片',
+  'no-photo': '资料库未上传照片/简历附件',
+  'card-commit-blocked': '点了卡片里的「确认」，但网页没保存（多半是有必填项没填，见说明）',
   'not-file-input': '网页不是文件上传控件',
+  'upload-type-mismatch': '网页上传控件不收这种文件类型（照片 / 简历附件放错了位置），未上传',
   'control-kind-mismatch': '控件类型与字段不匹配，未写入',
   'cascader-unsupported': '省市区级联暂不支持，已跳过',
   'custom-no-match': '资料库有这个自定义字段，但网页上没有能对上的同名标签',
@@ -553,7 +577,9 @@ function renderReport(report) {
     line.className = 'report-sections';
     const added = report.repeat.added || 0;
     const log = (report.repeat.log || []).join('；');
-    line.textContent = (added > 0 ? `自动新增 ${added} 个经历区块：` : '未能自动新增经历区块：') + log;
+    const onlySaved = (report.repeat.log || []).every(l => /已保存在页面上/.test(l));
+    line.textContent =
+      (added > 0 ? `自动新增 ${added} 个经历区块：` : onlySaved ? '多段经历：' : '未能自动新增经历区块：') + log;
     body.append(line);
   }
 

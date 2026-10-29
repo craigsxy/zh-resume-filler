@@ -96,12 +96,17 @@ function ownText(node) {
   return t.replace(/\s+/g, ' ').trim();
 }
 
-/** 像不像一个字段标签：1-12 字、有中文、不是占位提示、不是纯数字 */
-function looksLikeLabel(t) {
+/**
+ * 像不像一个字段标签：1-12 字、有中文、不是占位提示、不是纯数字。
+ * maxLen 只对"明确的 label 节点"放宽到 30：网申常有整句问题当标签
+ * （「你是从哪个渠道获取招聘信息的」「是否有医药类公司或医药类项目实习经验」），
+ * 12 字上限会把它们整个丢掉 → 空标签 / 被邻居标签抢走。
+ */
+function looksLikeLabel(t, maxLen = 12) {
   const s = String(t || '').replace(/\s+/g, '');
   if (!s) return false;
   const len = [...s].length;
-  if (len < 1 || len > 12) return false;
+  if (len < 1 || len > maxLen) return false;
   if (/^[\d.\-/年月日]+$/.test(s)) return false;
   if (/^(请选择|请输入|请填写|请上传|选填|必填|请输入内容|暂无)$/.test(s)) return false;
   return /[\u4e00-\u9fa5]/.test(s);
@@ -124,6 +129,13 @@ function looksLikeLatinLabel(t) {
   return !LATIN_LABEL_STOP.test(s);
 }
 
+/** <label> 或类名带 label 的节点（不含 title：区块标题也常带 title 类） */
+function isExplicitLabel(n) {
+  if (!n || !n.tagName) return false;
+  if (n.tagName === 'LABEL') return true;
+  return /label/i.test(String(n.className || ''));
+}
+
 /**
  * 收集某一层容器里"属于这个字段"的标签文本
  * 覆盖三种常见写法：label 元素 / 带 label|title 类的节点 / 兄弟元素的短文本
@@ -133,12 +145,15 @@ function labelTextsOf(node, el) {
   if (!node) return out;
   // body 级容器会把整页第一个"像标签"的文字捡来当字段名，纯噪音
   if (node === document.body || node === document.documentElement) return out;
-  const add = (t, allowLatin = false) => {
+  const add = (t, allowLatin = false, allowLong = false) => {
     const s = cleanLabel(t);
     if (looksLikeLabel(s) || (allowLatin && looksLikeLatinLabel(s))) {
       out.push(s);
       return;
     }
+    // 明确的 label 节点上的长问题句：整句收下（自定义字段照抄网页标签就能精确命中），
+    // 同时再收第一个短片段（「可实习时长（要求最少3个月及以上）」→「可实习时长」）
+    if (allowLong && looksLikeLabel(s, 30)) out.push(s);
     // 整段太长时（"手机 请输入11位手机号"这种带提示语的标签）取第一个短片段
     const cut = String(s)
       .split(/[\s，,。；;：:（(【[|/]+/)
@@ -153,7 +168,7 @@ function labelTextsOf(node, el) {
       if (n.contains(el)) continue;
       if (isOptionish(n)) continue;
       if (countFields(n) > 0) continue;
-      add(shortText(n, 24), true);
+      add(shortText(n, 40), true, isExplicitLabel(n));
     }
   } catch (_) {}
 
@@ -254,8 +269,12 @@ function pickSectionFromText(raw) {
   const seg = String(t)
     .split(/[\s|｜·•—–\-\/]+/)
     .map(x => cleanLabel(x))
-    .find(x => x && [...x].length <= 12 && looksLikeSectionTitle(x));
-  if (seg) return { title: seg, categoryId: null };
+    .find(x => x && [...x].length <= 12 && (matchSection(x) || looksLikeSectionTitle(x)));
+  if (seg) {
+    // 「教育背景-最高学历专业类别」「求职意向-请选择你的意向城市…」：前缀才是区块名
+    const r2 = matchSection(seg);
+    return r2 ? { title: seg, ...r2 } : { title: seg, categoryId: null };
+  }
   return null;
 }
 
@@ -270,7 +289,7 @@ function sectionTitleOf(node) {
   }
   for (const h of heads) {
     const r = pickSectionFromText(shortText(h, 40));
-    if (r) return r;
+    if (r) return { ...r, strong: true };
   }
   // ② 形如 title / header / caption 的直接子节点（北森 .bx-card-header 走这条）
   for (const k of node.children) {
@@ -278,7 +297,7 @@ function sectionTitleOf(node) {
     const cls = String(k.className || '');
     if (!/(title|header|head|caption|legend)/i.test(cls)) continue;
     const r = pickSectionFromText(shortText(k, 40));
-    if (r) return r;
+    if (r) return SECTION_HEAD_RE.test(cls) ? { ...r, strong: true } : r;
   }
   // ③ 节点自身的直接文本节点
   const own = ownText(node);
@@ -317,14 +336,22 @@ function sectionTitleOf(node) {
   return null;
 }
 
-/** 区块 = 至少含 2 个字段、并且能取到区块标题的祖先 */
+/**
+ * 区块 = 至少含 2 个字段、并且能取到区块标题的祖先。
+ * 例外：标题是 legend / h* 或类名明说是"区块标题"（section-title / card-header / module-title…）
+ * 时，1 个字段也成区块。网申里大量"一个区块只问一个问题"（申请信息 · 是否服从调剂、
+ * 实践活动经验 · 是否有经历），按 ≥2 的规则它们全被并进上一个无标题大块，分类全丢。
+ */
+const SECTION_HEAD_RE = /(section|card|module|part|group|block|panel|area|step)[-_]?(title|header|head|caption)|(title|header|head)[-_]?(section|card|module|wrapper|wrap|bar)/i;
+
 function sectionOf(container) {
   let node = container.parentElement;
   let depth = 0;
   while (node && node !== document.body && depth < 16) {
-    if (countFields(node) >= 2) {
+    const n = countFields(node);
+    if (n >= 1) {
       const t = sectionTitleOf(node);
-      if (t) return { title: t.title, categoryId: t.categoryId, container: node };
+      if (t && (n >= 2 || t.strong)) return { title: t.title, categoryId: t.categoryId, container: node };
     }
     node = node.parentElement;
     depth++;

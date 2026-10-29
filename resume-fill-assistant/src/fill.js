@@ -5,8 +5,19 @@ import { expandSections } from './repeat.js';
 import { writeField } from './adapters/index.js';
 import { resetPanelMemo } from './adapters/select.js';
 import { resolveValue } from './resolver.js';
+import { withoutSavedRecords, commitCards } from './cards.js';
+import { STRONG_KEYS, categoryById } from './schema.js';
 import * as bridgeApi from './bridge.js';
 import { sleep, tagOf, pathOf, setNativeValue, fire, numericOf } from './util.js';
+
+const blockIds = new WeakMap();
+let blockSeq = 0;
+function blockIdOf(plan) {
+  const b = plan.block;
+  if (!b || typeof b !== 'object') return `${plan.sectionTitle || ''}#${plan.blockIndex}`;
+  if (!blockIds.has(b)) blockIds.set(b, ++blockSeq);
+  return 'b' + blockIds.get(b);
+}
 
 function hasValue(v) {
   if (v == null) return false;
@@ -21,8 +32,16 @@ export async function fillPage(profile, options = {}) {
   let model;
   let plans;
   let expand = { added: 0, log: [] };
+  let savedLog = [];
   try {
     model = buildFormModel();
+    // v2.0.33 卡片式录入：已经以只读卡片保存在页面上的记录不再参与扩充和绑定，
+    // 否则资料库 1 条 + 页面 0 个编辑块 → 再点一次「添加」→ 同一段录两遍
+    try {
+      const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
+      profile = sv.profile;
+      savedLog = sv.log;
+    } catch (_) {}
     // 多段经历：网页只渲染一段时先把"第 n 段"的位置点出来（点完必须重新扫描）
     if (options.expand !== false) {
       // 扩充是"锦上添花"：点按钮涉及第三方页面，出错只能降级成"只填第一段"，
@@ -38,6 +57,7 @@ export async function fillPage(profile, options = {}) {
         model = buildFormModel();
       }
     }
+    if (savedLog.length) expand = { ...expand, log: [...savedLog, ...(expand.log || [])] };
     plans = bind(model, profile);
     // v2.0.27：同一个语义槽被页面上两处抢时，先写"区块分类对得上"的那处。
     // 真机案例：页面顶部一个无标题的杂项组件里也有「职务」输入框，它文档顺序靠前、
@@ -62,6 +82,7 @@ export async function fillPage(profile, options = {}) {
   }
 
   const results = [];
+  const planResults = new Map();
   const seen = new Set();
   // 收尾复核用：记录"普通文本框写成功"的 plan 和它对应的报告行
   const filledTexts = [];
@@ -109,9 +130,14 @@ export async function fillPage(profile, options = {}) {
       results.push({ ...base, status: 'empty' });
       continue;
     }
-    const key = `${plan.categoryId}:${plan.blockIndex}:${plan.slot}`;
-    if (seen.has(key)) continue;
+    // 同分类可能出现在两个区块里（「教育背景-最高学历专业类别」+「教育背景」卡片），
+    // 只按 分类:块序号:槽 去重会把第二个区块的同名槽悄悄吞掉 → 按块对象去重
+    // 弱计划（跨分类兜底）仍按旧口径：强计划已经占了 分类:块序号:槽 就让位（v2.0.27 杂项「职务」）
+    const key = `${blockIdOf(plan)}:${plan.categoryId}:${plan.slot}`;
+    const slotKey = `${plan.categoryId}:${plan.blockIndex}:${plan.slot}`;
+    if (seen.has(key) || (plan.weak && seen.has(slotKey))) continue;
     seen.add(key);
+    seen.add(slotKey);
 
     let res;
     try {
@@ -122,6 +148,7 @@ export async function fillPage(profile, options = {}) {
     }
     const pushed = { ...base, ...res, resolvedCode: (plan.resolved && plan.resolved.code) || '' };
     results.push(pushed);
+    planResults.set(plan, pushed);
     // 跳过/失败的字段补上祖先链，方便按站点校准选择器
     if (res.status !== 'filled') results[results.length - 1].path = pathOf(plan.field.el);
     // 普通文本框写成功的记下来，收尾时复核（见下）
@@ -211,6 +238,26 @@ export async function fillPage(profile, options = {}) {
   if (clearedAny) {
     await sleep(1200);
     await recheckCleared(1);
+  }
+
+  // 卡片式录入：这次写进了值的多段经历块，点卡片内的「确认」保存（cards.js 里有安全边界）
+  if (options.commitCards !== false) {
+    try {
+      const targets = [];
+      const seenBlocks = new Set();
+      plans.forEach((plan, i) => {
+        const r = planResults.get(plan);
+        if (!r || r.status !== 'filled' || !plan.block || !plan.section) return;
+        const cat = categoryById(plan.section.categoryId || plan.categoryId);
+        if (!cat || !cat.multiple) return;
+        if (seenBlocks.has(plan.block)) return;
+        seenBlocks.add(plan.block);
+        targets.push({ section: plan.section, block: plan.block, order: i });
+      });
+      results.push(...(await commitCards(targets)));
+    } catch (e) {
+      results.push({ section: '', label: '卡片确认', status: 'failed', reason: 'exception:' + String((e && e.message) || e).slice(0, 80) });
+    }
   }
 
   return summarize(withCustomDiagnostics(profile, model, results), model, expand);

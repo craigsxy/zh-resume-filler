@@ -6,7 +6,7 @@
 // 找不到就老实只填第一段，绝不去点来路不明的按钮。
 
 import { clickEl, fire, isVisible, sleep } from './util.js';
-import { categoryById } from './schema.js';
+import { categoryById, CATEGORIES } from './schema.js';
 import { buildFormModel } from './form-model.js';
 
 const MAX_ADD = 20;
@@ -80,10 +80,15 @@ function candidatesIn(area) {
 export function findAddButton(section, category) {
   const names = [category.name, ...(category.sectionKeys || [])].filter(Boolean);
   // 文本最短的那个最像按钮（容器文本长，且已被上面的浅节点规则过滤）
-  const named = list =>
-    list
-      .filter(x => names.some(n => x.text.includes(n)))
-      .sort((a, b) => a.text.length - b.text.length)[0];
+  // 文本最短的最像按钮；同样文案出现多次（区块顶部、底部各一个「添加 教育背景」）时取
+  // **文档里最后那个**：底部的按钮是"追加到末尾"，顶部的可能插在最前面，段序会错位
+  const named = list => {
+    const hits = list.filter(x => names.some(n => x.text.includes(n)));
+    if (!hits.length) return undefined;
+    const minLen = Math.min(...hits.map(x => x.text.length));
+    const shortest = hits.filter(x => x.text.length === minLen);
+    return shortest[shortest.length - 1];
+  };
   const areas = [section.container, section.container && section.container.parentElement].filter(Boolean);
 
   // ① 局部：文案带分类名
@@ -122,6 +127,14 @@ export function findAddButton(section, category) {
   return null;
 }
 
+function hasLocalAdd(section) {
+  const category = section && section.categoryId ? categoryById(section.categoryId) : null;
+  if (!category || !section.container) return false;
+  const names = [category.name, ...(category.sectionKeys || [])].filter(Boolean);
+  const areas = [section.container, section.container.parentElement].filter(Boolean);
+  return areas.some(a => candidatesIn(a).some(x => x.kind === 'text' && names.some(n => x.text.includes(n))));
+}
+
 /** 点"添加"如果弹出的是对话框（而不是就地加一块），收干净，别把页面留在弹窗里 */
 async function dismissDialogIfAny() {
   const dialogs = [...document.querySelectorAll('[role="dialog"],[class*="modal"],[class*="Modal"],[class*="dialog"]')].filter(
@@ -146,9 +159,22 @@ async function dismissDialogIfAny() {
 }
 
 function pickTarget(model, profile, skip) {
+  // 同一分类可能有好几个区块：「教育背景-最高学历专业类别」（单问）+「教育背景」（卡片列表），
+  // 「实习经历」（是否有实习经验…）+「实习经历」（卡片列表）。只有块最多的那个才是"重复段"区块；
+  // 拿单问区块的 1 块去比资料段数，会把已经够数的卡片再点多一张出来
+  const rep = new Map();
+  for (const s of model.sections || []) {
+    if (!s.categoryId) continue;
+    const cur = rep.get(s.categoryId);
+    const n = (s.blocks || []).length;
+    const m = cur ? (cur.blocks || []).length : -1;
+    // 块数打平时，区块里自带「添加」按钮的那个才是卡片列表
+    if (!cur || n > m || (n === m && !hasLocalAdd(cur) && hasLocalAdd(s))) rep.set(s.categoryId, s);
+  }
   for (const section of model.sections || []) {
     const category = section.categoryId ? categoryById(section.categoryId) : null;
     if (!category || !category.multiple || category.custom) continue;
+    if (rep.get(category.id) !== section) continue;
     if (skip && skip.has(category.id)) continue;
     const records = usableRecords(profile, category);
     const have = (section.blocks || []).length;
@@ -156,6 +182,18 @@ function pickTarget(model, profile, skip) {
     const btn = findAddButton(section, category);
     if (!btn) continue;
     return { section, category, btn, need: records.length - have, have };
+  }
+  // 页面上这个分类一个编辑块都没有（只有「添加 英语水平」按钮 + 已保存的只读卡片）：
+  // 扫描结果里压根没有这个区块，上面的循环永远轮不到它。只认文案带分类名的按钮。
+  const present = new Set((model.sections || []).map(s => s.categoryId).filter(Boolean));
+  for (const category of CATEGORIES) {
+    if (!category.multiple || category.custom || present.has(category.id)) continue;
+    if (skip && skip.has(category.id)) continue;
+    const records = usableRecords(profile, category);
+    if (!records.length) continue;
+    const btn = findAddButton({ container: null, blocks: [] }, category);
+    if (!btn || btn.kind !== 'text') continue;
+    return { section: { title: category.name, categoryId: category.id, blocks: [] }, category, btn, need: records.length, have: 0 };
   }
   return null;
 }

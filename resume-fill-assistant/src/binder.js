@@ -3,6 +3,7 @@
 
 import { normalize, charDice, conflicts, lengthPenalty } from './util.js';
 import { ALL_FIELDS, CATEGORIES, STRONG_KEYS, categoryById } from './schema.js';
+import { resolveValue } from './resolver.js';
 
 const SLOT_MIN_SCORE = 0.78;
 const SLOT_MIN_MARGIN = 0.06;
@@ -12,6 +13,7 @@ function scorePartAgainstField(part, field) {
   if (!p) return 0;
   // 反别名：这个标签明确不属于本字段（"学历" ≠ "最高学历"）
   if (field.deny && field.deny.some(d => normalize(d) === p)) return 0;
+  if (field.denyRe && field.denyRe.test(p)) return 0;
   let best = 0;
   for (const alias of field.alias) {
     const an = normalize(alias);
@@ -47,7 +49,8 @@ export function matchSlot(parts, candidates) {
     const p = normalize(clean[i]);
     if (!p) continue;
     for (const c of candidates) {
-      const denied = c.field.deny && c.field.deny.some(d => normalize(d) === p);
+      const denied =
+        (c.field.deny && c.field.deny.some(d => normalize(d) === p)) || (c.field.denyRe && c.field.denyRe.test(p));
       if (!denied && c.field.alias.some(a => normalize(a) === p)) exactHits.push({ c, i });
     }
   }
@@ -337,6 +340,21 @@ function ownCustomValue(record, name) {
   return undefined;
 }
 
+const DEGREE_RANK = { HIGH_SCHOOL: 1, VOCATIONAL: 1, ASSOCIATE: 2, BACHELOR: 3, MASTER: 4, DOCTOR: 5 };
+function highestDegreeIndex(records) {
+  let best = -1;
+  let bestRank = 0;
+  records.forEach((r, i) => {
+    const res = r ? resolveValue(r['学历'], 'degreeLevel') : null;
+    const rank = (res && DEGREE_RANK[res.code]) || 0;
+    if (rank > bestRank) {
+      bestRank = rank;
+      best = i;
+    }
+  });
+  return best;
+}
+
 export function bind(model, profile) {
   const plans = [];
   const sections = (model && Array.isArray(model.sections) ? model.sections : []).filter(
@@ -358,7 +376,16 @@ export function bind(model, profile) {
     const assign = alignBlocks(section.blocks, records, category || { id: '' }, candidates);
 
     for (const block of section.blocks) {
-      const ri = assign.has(block.index) ? assign.get(block.index) : null;
+      let ri = assign.has(block.index) ? assign.get(block.index) : null;
+      // 「最高学历专业类别」「最高学历毕业院校」这类单问区块：问的是最高学历那一段，
+      // 不是第 1 段 —— 按学历层次挑记录（资料库里教育经历顺序不一定从高到低）
+      if (category && category.id === 'education' && records.length > 1 && section.blocks.length === 1) {
+        const asksHighest = (block.fields || []).some(f => /最高学历/.test((f.labelParts || []).join(' ')));
+        if (asksHighest) {
+          const hi = highestDegreeIndex(records);
+          if (hi >= 0) ri = hi;
+        }
+      }
       const record = ri != null ? records[ri] || {} : null;
       const seen = new Set();
       for (const field of block.fields || []) {
@@ -450,6 +477,9 @@ export function bind(model, profile) {
             matchScore: m ? m.score : 0,
             hasRecord,
             ...(weak ? { weak: true } : {}),
+            // 卡片式录入要回到"这张卡"点确认（见 cards.js），留引用，不进报告
+            section,
+            block,
           })
         );
       }

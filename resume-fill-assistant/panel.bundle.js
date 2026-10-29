@@ -27,6 +27,7 @@
         T("户籍所在地", "personal.hukou", ["户籍所在地", "户口所在地", "户籍地", "户口所在地区"]),
         T("手机", "personal.mobile", ["手机", "手机号", "手机号码", "移动电话", "本人手机"]),
         T("邮箱", "personal.email", ["邮箱", "电子邮箱", "邮件", "email", "常用邮箱"]),
+        T("当前所在城市", "personal.currentCity", ["当前所在城市", "现居城市", "所在城市", "目前所在城市", "现居住城市", "当前城市", "现所在城市", "居住城市", "现居住地城市"]),
         T("现居地址", "personal.address", ["现居地址", "现居住地址", "居住地址", "现住址", "目前居住地"]),
         T("通讯地址", "personal.mailingAddress", ["通讯地址", "通信地址", "联系地址", "邮寄地址"]),
         N("身高", "personal.height", ["身高"]),
@@ -34,20 +35,29 @@
         T("紧急联系人", "personal.emergencyContact", ["紧急联系人", "紧急联系人姓名"]),
         T("紧急联系电话", "personal.emergencyPhone", ["紧急联系电话", "紧急联系人电话", "紧急联系人手机"]),
         T("参加高考城市", "personal.gaokaoCity", ["参加高考城市", "高考所在地", "高考省份", "生源地"]),
-        U("照片", "personal.photo", ["照片", "头像", "证件照", "个人照片", "免冠照片"])
+        T("英文名", "personal.englishName", ["英文名", "英文姓名", "英文名字", "englishname"]),
+        U("照片", "personal.photo", ["照片", "头像", "证件照", "个人照片", "免冠照片"]),
+        // 简历附件：网页标签五花八门（「请上传您的简历」被 cleanLabel 去掉"请上传"后是「您的简历」）
+        U("简历附件", "personal.resume", ["简历附件", "简历", "上传简历", "您的简历", "附件简历", "个人简历", "简历文件", "中文简历", "resume", "cv"])
       ]
     },
     {
       id: "intention",
       name: "求职意向",
       multiple: true,
-      sectionKeys: ["求职意向", "应聘意向", "意向信息", "求职期望", "应聘信息", "岗位意向"],
+      sectionKeys: ["求职意向", "应聘意向", "意向信息", "求职期望", "应聘信息", "岗位意向", "申请信息", "投递信息", "职位意向", "求职偏好", "实习意向"],
       fields: [
         T("意向岗位", "intent.position", ["意向岗位", "应聘岗位", "期望职位", "求职岗位", "意向职位", "应聘职位"]),
         T("意向城市", "intent.city", ["意向城市", "期望工作城市", "意向工作地点", "期望城市"]),
         T("意向行业", "intent.industry", ["意向行业", "期望行业"]),
         T("期望薪资", "intent.salary", ["期望薪资", "期望月薪", "薪资要求", "期望薪酬", "期望年薪"]),
-        D("到岗时间", "intent.onboard", "day", ["到岗时间", "可到岗时间", "最快到岗时间", "入职时间"]),
+        D("到岗时间", "intent.onboard", "day", ["到岗时间", "可到岗时间", "最快到岗时间", "入职时间", "最早到岗时间", "预计到岗时间"]),
+        // 实习岗网申的高频问题（辉瑞 / 图谱 tupu360 一类站点都会问）
+        D("最早可实习时间", "intent.internStart", "day", ["最早可实习时间", "毕业前最早可实习时间", "可实习开始时间", "可开始实习时间", "最早实习时间", "可实习时间"]),
+        T("每周实习天数", "intent.daysPerWeek", ["每周实习天数", "每周可出勤天数", "每周可实习天数", "每周出勤天数", "每周到岗天数", "每周可工作天数", "一周可实习天数"]),
+        T("实习时长", "intent.internDuration", ["实习时长", "可实习时长", "实习周期", "可实习月数", "实习期限", "可连续实习时长"]),
+        T("是否服从调剂", "intent.adjust", ["是否服从调剂", "是否服从岗位调剂", "是否接受调剂", "服从调剂", "是否接受调配", "是否服从分配", "是否接受岗位调剂", "是否服从专业调剂"]),
+        T("信息来源", "intent.source", ["信息来源", "招聘信息来源", "你是从哪个渠道获取招聘信息的", "您是从哪个渠道获取招聘信息的", "获知渠道", "了解渠道", "信息获取渠道", "获取招聘信息渠道", "从何处得知招聘信息", "招聘渠道"]),
         E("求职类型", "intent.jobType", "jobType", ["求职类型", "工作性质", "应聘类型"])
       ]
     },
@@ -59,10 +69,13 @@
       fields: [
         // 资料库里按"日"存（能填多细填多细），填到网页时按控件能力自动降级到年月。
         // 有效精度 = min(资料精度, 控件精度)，见 adapters/date.js
-        D("开始时间", "edu.start", "day", ["开始时间", "起始时间", "开始日期", "入学时间", "就读起始时间", "起始年月", "开始年月"]),
-        D("结束时间", "edu.end", "day", ["结束时间", "毕业时间", "结束日期", "毕业年月", "预计毕业时间", "预计毕业年月", "离校时间"]),
+        D("开始时间", "edu.start", "day", ["开始时间", "起始时间", "开始日期", "入学时间", "入学日期", "入学年月", "就读起始时间", "起始年月", "开始年月"]),
+        D("结束时间", "edu.end", "day", ["结束时间", "毕业时间", "结束日期", "毕业日期", "毕业年月", "预计毕业时间", "预计毕业日期", "预计毕业年月", "离校时间", "离校日期"]),
         T("学校名称", "edu.school", ["学校名称", "学校", "毕业院校", "院校", "院校名称", "就读学校"]),
         T("学院名称", "edu.college", ["学院名称", "学院", "所在学院", "院系"]),
+        // 专业类别必须单列：没有它时「专业类别」靠"包含专业"抢走 edu.major，
+        // 真正的「专业名称」反而撞槽被跳过（tupu360 真机快照）
+        T("专业类别", "edu.majorCategory", ["专业类别", "专业类型", "学科门类", "专业大类", "学科类别", "专业所属类别", "最高学历专业类别"]),
         T("专业名称", "edu.major", ["专业名称", "专业", "所学专业", "就读专业"]),
         // 别名里刻意不放"最高学历"：那是 personal.highestDegree 的别名。
         // 教育区块里出现"最高学历"时，靠"包含"打分（最高学历 ⊃ 学历）仍能落到这里。
@@ -92,11 +105,11 @@
       id: "practice",
       name: "在校实践",
       multiple: true,
-      sectionKeys: ["在校实践", "实践经历", "项目经历", "科研经历", "项目经验", "科研及实践"],
+      sectionKeys: ["在校实践", "实践经历", "项目经历", "科研经历", "项目经验", "科研及实践", "实践活动经验", "实践活动", "社会实践", "校内外实践", "实践经验", "活动经历", "科研项目经历"],
       fields: [
-        T("在校科研及实践项目", "prac.project", ["在校科研及实践项目", "项目名称", "实践项目", "科研项目", "项目经历"]),
+        T("在校科研及实践项目", "prac.project", ["在校科研及实践项目", "项目名称", "实践项目", "科研项目", "项目经历", "活动名称", "实践名称", "实践活动名称"]),
         T("担任角色", "prac.role", ["担任角色", "项目角色", "角色"]),
-        A("实践描述", "prac.desc", ["实践描述", "项目描述", "实践内容", "项目内容"]),
+        A("实践描述", "prac.desc", ["实践描述", "项目描述", "实践内容", "项目内容", "活动描述", "活动内容", "经历描述"]),
         D("开始时间", "prac.start", "day", ["开始时间", "起始时间", "开始日期"]),
         D("结束时间", "prac.end", "day", ["结束时间", "结束日期", "完成时间"])
       ]
@@ -105,11 +118,11 @@
       id: "awards",
       name: "获奖情况",
       multiple: true,
-      sectionKeys: ["获奖情况", "获奖经历", "荣誉奖励", "获奖信息", "奖励情况", "荣誉奖项"],
+      sectionKeys: ["获奖情况", "获奖经历", "荣誉奖励", "获奖信息", "奖励情况", "荣誉奖项", "获奖经验", "奖励荣誉", "所获荣誉", "荣誉证书", "获奖记录"],
       fields: [
         E("获奖级别", "award.level", "awardLevel", ["获奖级别", "奖项级别", "奖励级别"]),
-        T("奖项", "award.name", ["奖项", "奖项名称", "获奖名称", "获奖情况"]),
-        D("获奖时间", "award.time", "day", ["获奖时间", "获奖日期", "获奖年月"])
+        T("奖项", "award.name", ["奖项", "奖项名称", "获奖名称", "获奖情况", "荣誉名称", "奖励名称", "所获奖项"]),
+        D("获奖时间", "award.time", "day", ["获奖时间", "获奖日期", "获奖年月", "获得时间", "获奖年份"])
       ]
     },
     {
@@ -126,24 +139,26 @@
       id: "internships",
       name: "实习经历",
       multiple: true,
-      sectionKeys: ["实习经历", "工作经历", "实习经验", "实习情况", "职业经历", "实习及工作经历"],
+      sectionKeys: ["实习经历", "工作经历", "实习经验", "实习情况", "职业经历", "实习及工作经历", "实习工作经历", "工作经验"],
       fields: [
-        D("开始时间", "exp.start", "day", ["开始时间", "起始时间", "开始日期", "入职时间"]),
-        D("结束时间", "exp.end", "day", ["结束时间", "结束日期", "离职时间"]),
-        T("单位名称", "exp.company", ["单位名称", "公司名称", "实习单位", "实习公司", "工作单位"]),
-        T("实习地点", "exp.location", ["实习地点", "实习城市", "工作地点"]),
-        A("实习内容", "exp.desc", ["实习内容", "工作内容", "实习描述", "工作描述", "实习职责"])
+        D("开始时间", "exp.start", "day", ["开始时间", "起始时间", "开始日期", "入职时间", "入职日期", "实习开始日期", "实习开始时间"]),
+        D("结束时间", "exp.end", "day", ["结束时间", "结束日期", "离职时间", "离职日期", "实习结束日期", "实习结束时间"]),
+        T("单位名称", "exp.company", ["单位名称", "公司名称", "实习单位", "实习公司", "工作单位", "公司/组织名称", "组织名称", "企业名称", "实习单位名称", "公司/单位名称", "单位/公司名称"]),
+        T("实习岗位", "exp.position", ["实习岗位", "实习岗位名称", "岗位名称", "职位名称", "实习职位", "担任职位", "岗位", "职位", "所任职位"]),
+        T("所在部门", "exp.department", ["所在部门", "部门", "实习部门", "任职部门"]),
+        T("实习地点", "exp.location", ["实习地点", "实习城市", "工作地点", "工作城市"]),
+        A("实习内容", "exp.desc", ["实习内容", "工作内容", "实习描述", "工作描述", "实习职责", "工作职责", "实习工作职责/内容", "实习职责/内容", "工作职责/内容", "主要职责", "职责描述", "工作内容描述"])
       ]
     },
     {
       id: "languages",
       name: "语言能力",
       multiple: true,
-      sectionKeys: ["语言能力", "外语水平", "语言水平", "语言证书"],
+      sectionKeys: ["语言能力", "外语水平", "语言水平", "语言证书", "英语水平", "外语能力", "语言技能", "英语能力", "外语等级"],
       fields: [
         T("语言能力", "lang.name", ["语言能力", "语种", "语言"]),
-        E("证书类型", "lang.certType", "certType", ["证书类型", "语言证书", "证书名称", "考试类型"]),
-        T("语言成绩", "lang.score", ["语言成绩", "分数", "成绩", "等级"])
+        E("证书类型", "lang.certType", "certType", ["证书类型", "语言证书", "证书名称", "考试类型", "英语等级", "外语等级", "语言等级", "考试名称", "英语证书"]),
+        T("语言成绩", "lang.score", ["语言成绩", "分数", "成绩", "等级", "考试成绩", "英语成绩", "分值"])
       ]
     },
     {
@@ -316,9 +331,17 @@
   var DENY_ALIAS = {
     "personal.highestDegree": ["学历", "学位", "学历层次", "培养层次", "毕业学历"]
   };
+  var DENY_RE = {
+    "personal.highestDegree": /专业/,
+    "edu.degreeLevel": /专业/,
+    // 专业类别的标签一定带"类/门"（专业类别 / 学科门类 / 专业大类）；
+    // 否则「最高学历」会因为"被最高学历专业类别包含"而和学历打成平手
+    "edu.majorCategory": /^[^类门]*$/
+  };
   for (const c of CATEGORIES) {
     for (const f of c.fields) {
       if (DENY_ALIAS[f.slot]) f.deny = DENY_ALIAS[f.slot];
+      if (DENY_RE[f.slot]) f.denyRe = DENY_RE[f.slot];
     }
   }
   var FIELD_BY_SLOT = /* @__PURE__ */ new Map();
@@ -419,17 +442,23 @@
     tag.textContent = text;
     label.append(tag);
   }
+  var DOC_TYPES = [
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ];
   function createField(field, record) {
     const wrap = document.createElement("div");
     wrap.className = "field" + (field.kind === "textarea" ? " wide" : "");
     const label = document.createElement("label");
     label.textContent = field.label;
     const isPhoto = field.kind === "upload";
+    const isDoc = isPhoto && field.slot === "personal.resume";
     const el = field.kind === "textarea" ? document.createElement("textarea") : document.createElement("input");
     if (el.tagName === "INPUT") {
       if (isPhoto) {
         el.type = "file";
-        el.accept = "image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp";
+        el.accept = isDoc ? "application/pdf,.pdf,application/msword,.doc,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.docx" : "image/jpeg,.jpg,.jpeg,image/png,.png,image/webp,.webp";
       } else if (field.kind === "date") {
         el.type = "date";
       } else if (field.kind === "number") {
@@ -455,7 +484,14 @@
       el.onchange = () => {
         const file = el.files && el.files[0];
         if (!file) return;
-        if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+        if (isDoc) {
+          const okType = DOC_TYPES.includes(file.type) || /\.(pdf|docx?)$/i.test(file.name || "");
+          if (!okType || file.size > 8 * 1024 * 1024) {
+            el.value = "";
+            showNotice("请选择 8MB 以内的 PDF、DOC 或 DOCX 简历。", true);
+            return;
+          }
+        } else if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
           el.value = "";
           showNotice("请选择 5MB 以内的 JPG、JPEG、PNG 或 WEBP 图片。", true);
           return;
@@ -482,7 +518,12 @@
       wrap.append(warn);
     }
     const current = record[field.label];
-    if (isPhoto && current && current.dataUrl) {
+    if (isDoc && current && current.dataUrl) {
+      const note = document.createElement("p");
+      note.className = "section-description";
+      note.textContent = `已选：${current.name || "简历"}`;
+      wrap.append(note);
+    } else if (isPhoto && current && current.dataUrl) {
       const preview = document.createElement("img");
       preview.src = current.dataUrl;
       preview.alt = "已选照片";
@@ -717,8 +758,10 @@
     "value-not-a-date": "资料值不是合法日期",
     "readback-mismatch": "写入后回读不一致",
     "no-el": "找不到控件",
-    "no-photo": "资料库未上传照片",
+    "no-photo": "资料库未上传照片/简历附件",
+    "card-commit-blocked": "点了卡片里的「确认」，但网页没保存（多半是有必填项没填，见说明）",
     "not-file-input": "网页不是文件上传控件",
+    "upload-type-mismatch": "网页上传控件不收这种文件类型（照片 / 简历附件放错了位置），未上传",
     "control-kind-mismatch": "控件类型与字段不匹配，未写入",
     "cascader-unsupported": "省市区级联暂不支持，已跳过",
     "custom-no-match": "资料库有这个自定义字段，但网页上没有能对上的同名标签",
@@ -765,7 +808,8 @@
       line.className = "report-sections";
       const added = report.repeat.added || 0;
       const log = (report.repeat.log || []).join("；");
-      line.textContent = (added > 0 ? `自动新增 ${added} 个经历区块：` : "未能自动新增经历区块：") + log;
+      const onlySaved = (report.repeat.log || []).every((l) => /已保存在页面上/.test(l));
+      line.textContent = (added > 0 ? `自动新增 ${added} 个经历区块：` : onlySaved ? "多段经历：" : "未能自动新增经历区块：") + log;
       body.append(line);
     }
     if (report.reasonCounts && Object.keys(report.reasonCounts).length) {

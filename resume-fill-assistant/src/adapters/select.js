@@ -233,7 +233,37 @@ function scrollerCandidates(root) {
  * 找面板：先按类名（便宜），不行再用"点击后新增的短文本节点"反推容器。
  * 后者不依赖任何组件库类名，代价是一次全量扫描，只在必要时用。
  */
+/**
+ * WAI-ARIA 直连：组件库（antd / Element / iView / Arco / 自研 headless）的下拉触发器
+ * 普遍带 aria-controls / aria-owns 指向弹层列表的 id。按 id 取是**精确**的——
+ * 真机 antd 页面里打开过的下拉弹层全都留在 body 下（只是隐藏），
+ * 按类名猜会挑到别的字段的旧弹层。
+ */
+function ariaPanelOf(trigger) {
+  const hosts = [trigger];
+  try {
+    const box = trigger.closest && trigger.closest('[role="combobox"],[aria-haspopup]');
+    if (box && box !== trigger) hosts.push(box);
+    const inner = trigger.querySelector && trigger.querySelector('[role="combobox"],[aria-controls],[aria-owns]');
+    if (inner) hosts.push(inner);
+  } catch (_) {}
+  for (const h of hosts) {
+    for (const attr of ['aria-controls', 'aria-owns']) {
+      const ids = String((h.getAttribute && h.getAttribute(attr)) || '').split(/\s+/).filter(Boolean);
+      for (const id of ids) {
+        const el = document.getElementById(id);
+        if (!el || !isVisible(el) || el.contains(trigger)) continue;
+        if (collectPanelOptions(el).length < 1) continue;
+        return el;
+      }
+    }
+  }
+  return null;
+}
+
 function findOptionPanel(trigger, snap, before) {
+  const byAria = ariaPanelOf(trigger);
+  if (byAria) return popupRootOf(growToOptions(byAria), trigger);
   const bySel = findPanelBySelector(trigger, before);
   if (bySel) return popupRootOf(growToOptions(bySel), trigger);
   if (!snap) return null;

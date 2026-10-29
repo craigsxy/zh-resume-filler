@@ -203,7 +203,12 @@ console.log('\n[5] 回归：无标题区块（如"上传简历"）不得让整�
   ok('绑定不抛异常（原 section.fields is not iterable）', threw === null, threw || '');
 
   const uploadPlan = plans2.find(p => p.field && p.field.controlKind === 'UPLOAD');
-  ok('上传区块的字段被识别但槽为空 → 跳过', uploadPlan && uploadPlan.slot === null);
+  // v2.0.33 起有了「简历附件」字段：上传简历控件能对上槽，资料里没传简历 → 不写
+  ok(
+    '上传简历控件识别为 personal.resume，资料为空 → 不写',
+    uploadPlan && (uploadPlan.slot === null || (uploadPlan.slot === 'personal.resume' && !uploadPlan.value)),
+    JSON.stringify(uploadPlan && { slot: uploadPlan.slot, value: uploadPlan.value })
+  );
 
   const name2 = plans2.find(p => p.slot === 'personal.name');
   ok('同一页里的个人信息仍能正常绑定', name2 && name2.value === '倪睿', JSON.stringify(name2 && name2.value));
