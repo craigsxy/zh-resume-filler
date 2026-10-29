@@ -189,5 +189,34 @@ console.log('\n[7] 精度降级 + 最高学历');
   );
 }
 
+console.log('\n[派生字段] derive.js：只补空、不覆盖');
+{
+  const { deriveProfile, ageFrom, periodOf, highestEducation } = await import('../src/derive.js');
+  const today = new Date(2026, 9, 29);
+  ok('周岁：生日没到减一', ageFrom('2000-11-01', today) === '25' && ageFrom('2000-10-01', today) === '26');
+  ok('起止时间拼接', periodOf('2021-09-01', '2025-06-30') === '2021.09-2025.06' && periodOf('2025-09', '') === '2025.09-至今');
+  const p = {
+    personal: [{ 出生日期: '2000-11-01', 毕业院校: '我自己写的' }],
+    education: [
+      { 学校名称: '东湖大学', 学历: '本科', 结束时间: '2025-06-30', 专业名称: '机械工程' },
+      { 学校名称: '北岸大学', 学历: '硕士研究生', 学位: '硕士', 结束时间: '2027-05-20', 专业名称: '机械工程', 学习形式: '全日制' },
+    ],
+    internships: [{ 单位名称: '示例汽车', 实习岗位: '工程实习生', 开始时间: '2025-06-01', 结束时间: '2025-09-01', 实习内容: '做事' }],
+    certificates: [{ 证书名称: 'SolidWorks CSWA' }, { 证书名称: '驾驶证C1' }],
+    work: [],
+  };
+  const d = deriveProfile(p, today);
+  ok('最高学历那段 = 硕士', highestEducation(p)['学校名称'] === '北岸大学');
+  ok('年龄按出生日期算', d.personal[0]['年龄'] === '25', d.personal[0]['年龄']);
+  ok('用户填了的毕业院校不被覆盖', d.personal[0]['毕业院校'] === '我自己写的');
+  ok('毕业专业 / 毕业时间 / 最高学位 / 最高学历 自动带出', d.personal[0]['毕业专业'] === '机械工程' && d.personal[0]['毕业时间'] === '2027-05-20' && d.personal[0]['最高学位'] === '硕士' && d.personal[0]['最高学历'] === '硕士研究生');
+  ok('实习起止时间自动拼接', d.internships[0]['起止时间'] === '2025.06-2025.09');
+  ok('证书认证由证书列表生成', d.skills[0]['证书认证'] === 'SolidWorks CSWA、驾驶证C1');
+  ok('工作经历为空 → 用实习经历代替（岗位 → 职位）', d.work.length === 1 && d.work[0]['单位名称'] === '示例汽车' && d.work[0]['职位'] === '工程实习生' && d.work[0]['工作内容'] === '做事');
+  ok('原资料没被改动', !('年龄' in p.personal[0]) && !p.work.length);
+  const d2 = deriveProfile({ ...p, work: [{ 单位名称: '真实全职' }] }, today);
+  ok('有真实工作经历就不代替', d2.work.length === 1 && d2.work[0]['单位名称'] === '真实全职');
+}
+
 console.log(`\n结果：${pass} 通过 / ${fail} 失败\n`);
 process.exit(fail ? 1 : 0);

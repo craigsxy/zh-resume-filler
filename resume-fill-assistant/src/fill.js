@@ -6,6 +6,7 @@ import { writeField } from './adapters/index.js';
 import { resetPanelMemo } from './adapters/select.js';
 import { resolveValue } from './resolver.js';
 import { withoutSavedRecords, commitCards } from './cards.js';
+import { deriveProfile } from './derive.js';
 import { STRONG_KEYS, categoryById } from './schema.js';
 import * as bridgeApi from './bridge.js';
 import { sleep, tagOf, pathOf, setNativeValue, fire, numericOf } from './util.js';
@@ -28,6 +29,10 @@ function hasValue(v) {
 export async function fillPage(profile, options = {}) {
   const bridge = options.bridge || bridgeApi;
   resetPanelMemo();
+  // 派生字段只补空：年龄、毕业院校、起止时间、工作经历←实习经历……（derive.js）
+  try {
+    profile = deriveProfile(profile || {});
+  } catch (_) {}
 
   let model;
   let plans;

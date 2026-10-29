@@ -1,10 +1,18 @@
 // 侧边栏：资料库管理 + 触发填充 + 填充报告
 // 设计原则（v2.0.11 起）：侧边栏里**不做任何选择交互**，所有字段都是文本输入框，
 // 由用户自己填写。枚举词表只留在 schema/resolver 里，供填充时做同义词归一。
-import { CATEGORIES, SCHEMA_VERSION } from '../schema.js';
+import { CATEGORIES, SCHEMA_VERSION, HINTS } from '../schema.js';
 import { normalize } from '../util.js';
+import { completion, exportPayload, parseImport, sanitizeProfile, sortEducation, sampleProfile } from './library.js';
 
 const STORAGE_KEY = 'resumeProfile';
+// 多份简历：当前这份始终在 STORAGE_KEY（content script / 老版本都只认它），
+// 其余的存在 LIB_KEY.items[].data 里；切换时互换
+const LIB_KEY = 'resumeLibrary';
+const APPS_KEY = 'applications';
+const APPS_VIEW = '__apps';
+let library = { activeId: 'r1', items: [{ id: 'r1', name: '我的简历', updatedAt: Date.now() }] };
+let applications = [];
 const $ = s => document.querySelector(s);
 
 let profile = {};
@@ -19,8 +27,301 @@ function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     profile.schemaVersion = SCHEMA_VERSION;
-    chrome.storage.local.set({ [STORAGE_KEY]: profile });
+    const item = activeItem();
+    if (item) item.updatedAt = Date.now();
+    chrome.storage.local.set({ [STORAGE_KEY]: profile, [LIB_KEY]: library });
   }, 180);
+  renderProgress();
+}
+
+function activeItem() {
+  return (library.items || []).find(x => x.id === library.activeId) || null;
+}
+
+const uid = () => 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+// ---------- 完成度 ----------
+
+function renderProgress() {
+  const box = $('#progress');
+  if (!box) return;
+  const st = completion(profile);
+  box.querySelector('.progress-text').innerHTML =
+    `已填写 <b>${st.filled}</b> / ${st.total} 个字段 · 完成度 <b>${st.percent}%</b>` +
+    (st.total - st.filled > 0 ? ` · 未补齐 ${st.total - st.filled} 项` : '');
+  box.querySelector('.progress-fill').style.width = st.percent + '%';
+  // 导航上的分类计数就地刷新（不重建导航，敲字时不闪）
+  document.querySelectorAll('#category-nav .nav-item').forEach(b => {
+    const c = CATEGORIES.find(x => x.id === b.dataset.id);
+    const cnt = b.querySelector('.nav-count');
+    if (!c || !cnt) return;
+    const cs = st.byCategory[c.id];
+    if (c.custom) cnt.textContent = String((profile[c.id] || []).length || '');
+    else cnt.textContent = cs && cs.total ? `${cs.filled}/${cs.total}` : '';
+    cnt.classList.toggle('done', !!(cs && cs.total && cs.filled === cs.total));
+  });
+  // 记录卡片上的"未补齐 N 项"
+  const cat = CATEGORIES.find(x => x.id === activeId);
+  if (cat && !cat.custom) {
+    const recs = (st.byCategory[cat.id] || {}).records || [];
+    document.querySelectorAll('#records .record-card').forEach((card, i) => {
+      const tag = card.querySelector('.record-missing');
+      if (!tag || !recs[i]) return;
+      const n = recs[i].missing.length;
+      tag.textContent = n ? `未补齐 ${n} 项` : '已填全';
+    });
+  }
+}
+
+// ---------- 多份简历 ----------
+
+function persistAll() {
+  profile.schemaVersion = SCHEMA_VERSION;
+  return chrome.storage.local.set({ [STORAGE_KEY]: profile, [LIB_KEY]: library });
+}
+
+function renderLibrary() {
+  const sel = $('#resume-select');
+  const name = $('#resume-name');
+  if (!sel || !name) return;
+  sel.replaceChildren();
+  for (const it of library.items) {
+    const o = document.createElement('option');
+    o.value = it.id;
+    o.textContent = it.name || '未命名简历';
+    if (it.id === library.activeId) o.selected = true;
+    sel.append(o);
+  }
+  const cur = activeItem();
+  name.value = (cur && cur.name) || '';
+  $('#resume-delete').disabled = library.items.length <= 1;
+}
+
+function rerenderAll() {
+  renderLibrary();
+  renderNav();
+  renderSection();
+  renderProgress();
+}
+
+/** 切到另一份：当前这份收进库里，目标那份放到 STORAGE_KEY */
+async function switchResume(id) {
+  if (id === library.activeId) return;
+  const cur = activeItem();
+  const next = library.items.find(x => x.id === id);
+  if (!next) return;
+  if (cur) cur.data = JSON.parse(JSON.stringify(profile));
+  profile = sanitizeProfile(next.data || {});
+  delete next.data;
+  library.activeId = id;
+  normalizeDates();
+  await persistAll();
+  rerenderAll();
+}
+
+async function createResume(name, data) {
+  const cur = activeItem();
+  if (cur) cur.data = JSON.parse(JSON.stringify(profile));
+  const item = { id: uid(), name, updatedAt: Date.now() };
+  library.items.push(item);
+  library.activeId = item.id;
+  profile = sanitizeProfile(data || {});
+  normalizeDates();
+  await persistAll();
+  rerenderAll();
+  return item;
+}
+
+function downloadJSON(filename, obj) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** 导入：读文件 → 解析 → 作为一份新简历加入并切过去（不覆盖现有的） */
+export async function importResumeText(text, fallbackName = '导入的简历') {
+  const r = parseImport(text);
+  if (!r.ok) {
+    showNotice('导入失败：' + r.error, true);
+    return null;
+  }
+  const item = await createResume(r.name || fallbackName, r.profile);
+  showNotice(`已导入「${item.name}」并切换过去。`);
+  return item;
+}
+
+function wireLibrary() {
+  const sel = $('#resume-select');
+  if (!sel) return;
+  sel.onchange = () => switchResume(sel.value);
+  $('#resume-name').oninput = () => {
+    const cur = activeItem();
+    if (!cur) return;
+    cur.name = $('#resume-name').value;
+    const opt = sel.querySelector(`option[value="${cur.id}"]`);
+    if (opt) opt.textContent = cur.name || '未命名简历';
+    save();
+  };
+  $('#resume-new').onclick = () => createResume(`简历 ${library.items.length + 1}`, {});
+  $('#resume-copy').onclick = () => {
+    const cur = activeItem();
+    return createResume(`${(cur && cur.name) || '简历'} 副本`, JSON.parse(JSON.stringify(profile)));
+  };
+  // 删除要点两次（侧边栏里 confirm() 不一定可用），3 秒内再点一次才真删
+  let armed = 0;
+  $('#resume-delete').onclick = async () => {
+    const btn = $('#resume-delete');
+    if (library.items.length <= 1) return;
+    if (Date.now() - armed > 3000) {
+      armed = Date.now();
+      btn.textContent = '再点一次确认删除';
+      setTimeout(() => (btn.textContent = '删除'), 3000);
+      return;
+    }
+    armed = 0;
+    btn.textContent = '删除';
+    const goneId = library.activeId;
+    const next = library.items.find(x => x.id !== goneId);
+    library.items = library.items.filter(x => x.id !== goneId);
+    library.activeId = next.id;
+    profile = sanitizeProfile(next.data || {});
+    delete next.data;
+    normalizeDates();
+    await persistAll();
+    rerenderAll();
+    showNotice('已删除这份简历。');
+  };
+  $('#resume-export').onclick = () => {
+    const cur = activeItem();
+    const name = (cur && cur.name) || '我的简历';
+    downloadJSON(`${name}.json`, exportPayload(name, profile));
+  };
+  $('#resume-import').onclick = () => $('#resume-import-file').click();
+  $('#resume-import-file').onchange = async () => {
+    const input = $('#resume-import-file');
+    const file = input.files && input.files[0];
+    if (!file) return;
+    const text = await file.text();
+    input.value = '';
+    await importResumeText(text, file.name.replace(/\.json$/i, ''));
+  };
+  $('#resume-sample').onclick = async () => {
+    await createResume('示例简历（虚构）', sampleProfile());
+    showNotice('已新建一份示例简历，可以直接拿去测试网申页面。');
+  };
+}
+
+// ---------- 投递记录 ----------
+
+const APP_STATUS = ['已填写', '已投递', '笔试', '面试', 'Offer', '未通过', '放弃'];
+
+async function logApplication(tab, report) {
+  try {
+    const url = String((tab && tab.url) || '');
+    const host = (() => {
+      try {
+        return new URL(url).host;
+      } catch (_) {
+        return '';
+      }
+    })();
+    // 同一个页面重复填只更新，不刷屏
+    const key = url.split('#')[0];
+    let row = applications.find(a => a.key === key);
+    if (!row) {
+      row = { id: uid(), key, url, host, title: String((tab && tab.title) || host), status: '已填写', note: '', createdAt: Date.now() };
+      applications.unshift(row);
+    }
+    row.updatedAt = Date.now();
+    row.resume = (activeItem() && activeItem().name) || '';
+    row.filled = (report && report.filled) || 0;
+    row.failed = (report && report.failed) || 0;
+    applications = applications.slice(0, 500);
+    await chrome.storage.local.set({ [APPS_KEY]: applications });
+    renderAppsCount();
+    if (activeId === APPS_VIEW) renderApps();
+  } catch (_) {}
+}
+
+function renderAppsCount() {
+  const c = $('#apps-count');
+  if (c) c.textContent = applications.length ? String(applications.length) : '';
+}
+
+function saveApps() {
+  chrome.storage.local.set({ [APPS_KEY]: applications });
+}
+
+function renderApps() {
+  const view = $('#apps-view');
+  view.replaceChildren();
+  if (!applications.length) {
+    const p = document.createElement('div');
+    p.className = 'empty-state';
+    p.textContent = '还没有投递记录。每次点「填写当前网页」都会在这里记一笔，状态可以自己改。';
+    view.append(p);
+    return;
+  }
+  for (const a of applications) {
+    const row = document.createElement('div');
+    row.className = 'app-row';
+    const top = document.createElement('div');
+    top.className = 'app-top';
+    const title = document.createElement('a');
+    title.className = 'app-title';
+    title.textContent = a.title || a.host;
+    title.href = a.url;
+    title.target = '_blank';
+    title.rel = 'noreferrer';
+    const meta = document.createElement('span');
+    meta.className = 'app-meta';
+    const d = new Date(a.updatedAt || a.createdAt || Date.now());
+    meta.textContent = `${d.getMonth() + 1}/${d.getDate()} · 填 ${a.filled || 0}${a.failed ? ' · 失败 ' + a.failed : ''}${a.resume ? ' · ' + a.resume : ''}`;
+    top.append(title, meta);
+
+    const ctl = document.createElement('div');
+    ctl.className = 'app-ctl';
+    const st = document.createElement('select');
+    st.setAttribute('aria-label', '投递状态');
+    for (const s0 of APP_STATUS) {
+      const o = document.createElement('option');
+      o.value = o.textContent = s0;
+      if (s0 === a.status) o.selected = true;
+      st.append(o);
+    }
+    st.onchange = () => {
+      a.status = st.value;
+      saveApps();
+    };
+    const note = document.createElement('input');
+    note.type = 'text';
+    note.placeholder = '备注（岗位 / 笔试时间 / 内推人…）';
+    note.value = a.note || '';
+    note.oninput = () => {
+      a.note = note.value;
+      saveApps();
+    };
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'delete-button';
+    del.textContent = '✕';
+    del.title = '删除这条记录';
+    del.onclick = () => {
+      applications = applications.filter(x => x !== a);
+      saveApps();
+      renderAppsCount();
+      renderApps();
+    };
+    ctl.append(st, note, del);
+    row.append(top, ctl);
+    view.append(row);
+  }
 }
 
 /** v1 → v2 迁移：只补元数据与日期精度，字段名不动，老数据零改写；迁移前整份备份 */
@@ -55,6 +356,13 @@ function normalizeDates() {
 async function load() {
   const data = await chrome.storage.local.get(STORAGE_KEY);
   const stored = data[STORAGE_KEY];
+  try {
+    const lib = (await chrome.storage.local.get(LIB_KEY))[LIB_KEY];
+    if (lib && Array.isArray(lib.items) && lib.items.length) library = lib;
+    const apps = (await chrome.storage.local.get(APPS_KEY))[APPS_KEY];
+    if (Array.isArray(apps)) applications = apps;
+  } catch (_) {}
+  if (!library.items.some(x => x.id === library.activeId)) library.activeId = library.items[0].id;
   if (stored && !stored.schemaVersion) {
     try {
       await chrome.storage.local.set({ [`${STORAGE_KEY}_v1_backup`]: stored });
@@ -66,8 +374,10 @@ async function load() {
     if (!Array.isArray(profile[c.id])) profile[c.id] = c.multiple ? [] : [{}];
   });
   normalizeDates();
+  renderLibrary();
   renderNav();
   renderSection();
+  renderAppsCount();
   save();
 }
 
@@ -78,6 +388,7 @@ function renderNav() {
     const b = document.createElement('button');
     b.className = 'nav-item' + (activeId === c.id ? ' active' : '');
     b.type = 'button';
+    b.dataset.id = c.id;
     const name = document.createElement('span');
     name.textContent = c.name;
     const count = document.createElement('span');
@@ -91,6 +402,16 @@ function renderNav() {
     };
     nav.append(b);
   });
+  const apps = $('#apps-nav');
+  if (apps) {
+    apps.classList.toggle('active', activeId === APPS_VIEW);
+    apps.onclick = () => {
+      activeId = APPS_VIEW;
+      renderNav();
+      renderSection();
+    };
+  }
+  renderProgress();
 }
 
 function addTag(label, text) {
@@ -156,7 +477,7 @@ function createField(field, record) {
   if (!isPhoto) {
     el.value = raw || '';
     if (monthOnly) el.value = `${raw}-01`;
-    if (!el.placeholder) el.placeholder = '选填';
+    if (!el.placeholder) el.placeholder = HINTS[field.slot] || '选填';
   }
   el.setAttribute('aria-label', field.label);
 
@@ -422,8 +743,25 @@ function refreshCustomWarnings() {
 }
 
 function renderSection() {
+  const appsView = $('#apps-view');
+  if (activeId === APPS_VIEW) {
+    $('#section-title').textContent = '投递记录';
+    $('#section-description').textContent = '每次填写网页自动记一笔；状态和备注自己维护，只存在本机。';
+    $('#add-record').hidden = true;
+    const sortBtn = $('#sort-edu');
+    if (sortBtn) sortBtn.hidden = true;
+    $('#records').replaceChildren();
+    $('#empty-state').hidden = true;
+    if (appsView) {
+      appsView.hidden = false;
+      renderApps();
+    }
+    return;
+  }
+  if (appsView) appsView.hidden = true;
   const c = CATEGORIES.find(x => x.id === activeId);
   $('#section-title').textContent = c.name;
+  ensureSortButton(c);
   const base = c.multiple
     ? '可添加多条记录。同名多记录会按"学校 / 单位"等强键与网页区块自动配对。'
     : '所有字段均为选填。';
@@ -446,8 +784,30 @@ function renderSection() {
     const title = document.createElement('span');
     title.className = 'record-title';
     title.textContent = c.multiple ? `${c.name} ${index + 1}` : c.name;
+    if (!c.custom) {
+      const missing = document.createElement('span');
+      missing.className = 'record-missing';
+      title.append(missing);
+    }
     head.append(title);
     if (c.multiple) {
+      const tools = document.createElement('div');
+      tools.className = 'record-tools';
+      const move = (dir, text) => {
+        const b = document.createElement('button');
+        b.className = 'link-button';
+        b.type = 'button';
+        b.textContent = text;
+        const to = index + dir;
+        b.disabled = to < 0 || to >= records.length;
+        b.onclick = () => {
+          const arr = profile[c.id];
+          [arr[index], arr[to]] = [arr[to], arr[index]];
+          save();
+          renderSection();
+        };
+        return b;
+      };
       const del = document.createElement('button');
       del.className = 'delete-button';
       del.type = 'button';
@@ -458,7 +818,8 @@ function renderSection() {
         renderNav();
         renderSection();
       };
-      head.append(del);
+      tools.append(move(-1, '上移'), move(1, '下移'), del);
+      head.append(tools);
     }
 
     const grid = document.createElement('div');
@@ -471,6 +832,27 @@ function renderSection() {
   });
 
   refreshCustomWarnings();
+  renderProgress();
+}
+
+/** 教育经历：一键按学历从高到低排（很多网申要求"从最高学历填起"） */
+function ensureSortButton(c) {
+  let b = $('#sort-edu');
+  if (!b) {
+    b = document.createElement('button');
+    b.id = 'sort-edu';
+    b.type = 'button';
+    b.className = 'secondary';
+    b.textContent = '按学历排序';
+    b.onclick = () => {
+      profile.education = sortEducation(profile.education || []);
+      save();
+      renderSection();
+      showNotice('已按学历从高到低排好。');
+    };
+    $('#add-record').before(b);
+  }
+  b.hidden = c.id !== 'education' || (profile.education || []).length < 2;
 }
 
 $('#add-record').onclick = () => {
@@ -702,6 +1084,7 @@ $('#fill-page').onclick = async () => {
       }
     }
     lastReport = result;
+    if (result && !result.error && result.found) logApplication(tab, result);
     if (result && result.error) {
       showNotice(`填写中断：${result.error}`, true);
     } else if (result && result.found) {
@@ -722,4 +1105,5 @@ $('#fill-page').onclick = async () => {
   }
 };
 
+wireLibrary();
 load();

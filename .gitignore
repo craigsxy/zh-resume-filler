@@ -1,1 +1,4 @@
 node_modules/
+# 个人资料：只留在本机，永远不推到公开仓库
+private/
+*.private.json

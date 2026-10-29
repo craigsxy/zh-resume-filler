@@ -299,8 +299,8 @@ console.log('\n[8] 分类下的自定义字段：按用户填的字段名去对�
     <div class="card">
       <div class="section-title">个人信息</div>
       <div class="form-item"><label class="form-label">姓名</label><input name="name5"></div>
-      <div class="form-item"><label class="form-label">微信号</label><input name="wechat5"></div>
-      <div class="form-item"><label class="form-label">个人主页</label><input name="gh5"></div>
+      <div class="form-item"><label class="form-label">钉钉号</label><input name="wechat5"></div>
+      <div class="form-item"><label class="form-label">领英主页</label><input name="gh5"></div>
       <div class="form-item"><label class="form-label">最高学历</label>
         <select name="degree5"><option value="">请选择</option><option value="1">本科</option><option value="2">硕士</option></select>
       </div>
@@ -316,17 +316,17 @@ console.log('\n[8] 分类下的自定义字段：按用户填的字段名去对�
 
   const p5 = defaultProfile();
   p5.personal = [
-    { 姓名: '倪睿', 最高学历: '硕士', __custom: [{ name: '微信号', value: 'nirui_pm' }] },
+    { 姓名: '倪睿', 最高学历: '硕士', __custom: [{ name: '钉钉号', value: 'nirui_pm' }] },
   ];
   // 老的「自定义字段」分类（字段名称/字段内容）不属于任何具体分类 → 全局生效
-  p5.custom = [{ 字段名称: '个人主页', 字段内容: 'github.com/nirui' }];
+  p5.custom = [{ 字段名称: '领英主页', 字段内容: 'github.com/nirui' }];
 
   const report5 = await fillPage(p5, {
     bridge: { setModelValue: async () => ({ ok: false }), readModel: async () => ({ ok: false }) },
   });
 
   const w = report5.results.find(r => r.slot && r.slot.startsWith('custom:'));
-  ok('自定义字段进了匹配池（槽 = custom:分类:字段名）', w && w.slot === 'custom:personal:微信号', JSON.stringify(report5.results.map(r => r.slot)));
+  ok('自定义字段进了匹配池（槽 = custom:分类:字段名）', w && w.slot === 'custom:personal:钉钉号', JSON.stringify(report5.results.map(r => r.slot)));
   ok('按自定义字段名对上了网页标签', w && w.status === 'filled', JSON.stringify(w && { s: w.status, r: w.reason }));
   ok('自定义字段的值真的填进 DOM', document.querySelector('input[name="wechat5"]').value === 'nirui_pm', document.querySelector('input[name="wechat5"]').value);
 
@@ -338,7 +338,7 @@ console.log('\n[8] 分类下的自定义字段：按用户填的字段名去对�
   );
   ok('姓名照常填（自定义字段没有抢走内置字段）', document.querySelector('input[name="name5"]').value === '倪睿');
 
-  const g = report5.results.find(r => r.slot === 'custom:global:个人主页');
+  const g = report5.results.find(r => r.slot === 'custom:global:领英主页');
   ok('老的「自定义字段」分类也进了匹配池（全局）', !!g, JSON.stringify(report5.results.map(r => r.slot)));
   ok(
     '全局自定义字段的值填进 DOM',
@@ -406,13 +406,13 @@ console.log('\n[10] 自定义字段：跨区块 + 纯英文标签 + 没匹配上
 {
   // 用户反馈"自定义字段无法适配、也无法被检测到"。三个成因一起覆盖：
   //   ① 网页把这个字段放在"没被识别成任何分类"的区块里 → 只按分类作用域找会漏
-  //   ② 标签是纯英文（GitHub）→ 原来"必须含中文"的规则把它整条丢掉
+  //   ② 标签是纯英文（Telegram）→ 原来"必须含中文"的规则把它整条丢掉
   //   ③ 名字对不上 → 报告里原来一条记录都没有，看起来像"没检测到"
   const html7 = `<!doctype html><html><body><form>
     <div class="card">
       <div class="section-title">补充材料</div>
-      <div class="form-item"><label class="form-label">GitHub</label><input name="gh7"></div>
-      <div class="form-item"><label class="form-label">导师姓名</label><input name="tutor7"></div>
+      <div class="form-item"><label class="form-label">Telegram</label><input name="gh7"></div>
+      <div class="form-item"><label class="form-label">合作导师单位</label><input name="tutor7"></div>
       <div class="form-item"><label class="form-label">个人博客</label><input name="blog7"></div>
     </div>
   </form></body></html>`;
@@ -425,16 +425,16 @@ console.log('\n[10] 自定义字段：跨区块 + 纯英文标签 + 没匹配上
   global.HTMLSelectElement = dom7.window.HTMLSelectElement;
 
   const p7 = defaultProfile();
-  // GitHub 挂在"个人信息"下、导师姓名挂在"教育经历"下，但网页把它们放在同一个不明区块里
-  p7.personal = [{ 姓名: '倪睿', __custom: [{ name: 'GitHub', value: 'github.com/nirui' }] }];
-  p7.education = [{ 学校名称: '天津大学', __custom: [{ name: '导师姓名', value: '张老师' }] }];
+  // Telegram 挂在"个人信息"下、合作导师单位挂在"教育经历"下，但网页把它们放在同一个不明区块里
+  p7.personal = [{ 姓名: '倪睿', __custom: [{ name: 'Telegram', value: 'github.com/nirui' }] }];
+  p7.education = [{ 学校名称: '天津大学', __custom: [{ name: '合作导师单位', value: '张老师' }] }];
 
   const report7 = await fillPage(p7, {
     bridge: { setModelValue: async () => ({ ok: false }), readModel: async () => ({ ok: false }) },
   });
   const summary7 = report7.results.map(r => ({ slot: r.slot, s: r.status }));
 
-  ok('英文标签 GitHub 被识别成字段', summary7.some(r => r.slot === 'custom:personal:github'), JSON.stringify(summary7));
+  ok('英文标签 Telegram 被识别成字段', summary7.some(r => r.slot === 'custom:personal:telegram'), JSON.stringify(summary7));
   ok(
     '英文标签的字段被填上',
     document.querySelector('input[name="gh7"]').value === 'github.com/nirui',
@@ -447,13 +447,13 @@ console.log('\n[10] 自定义字段：跨区块 + 纯英文标签 + 没匹配上
   );
 
   // 网页上没有"个人博客"这个标签，但资料库里加过 → 必须有一条明确的诊断
-  p7.personal[0].__custom.push({ name: '研究方向', value: '大模型应用' });
+  p7.personal[0].__custom.push({ name: '研究兴趣领域', value: '大模型应用' });
   const report7b = await fillPage(p7, {
     bridge: { setModelValue: async () => ({ ok: false }), readModel: async () => ({ ok: false }) },
   });
   const miss = report7b.results.find(r => r.reason === 'custom-no-match');
   ok('名字对不上时报告里有 custom-no-match（不再悄悄消失）', !!miss, JSON.stringify(report7b.results.map(r => r.reason || r.slot)));
-  ok('诊断行带上了自定义字段名', miss && miss.label === '研究方向', miss && miss.label);
+  ok('诊断行带上了自定义字段名', miss && miss.label === '研究兴趣领域', miss && miss.label);
 }
 
 console.log('\n[11] 多段经历：网页只渲染一段时，先点「添加」再填第 2 段');

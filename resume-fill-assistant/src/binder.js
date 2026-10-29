@@ -292,6 +292,9 @@ function promoteToDate(plan) {
   if (!plan || plan.kind === 'date') return plan;
   const name = String(plan.label || '') + ' ' + String((plan.field && plan.field.label) || '');
   if (!DATE_WORD_RE.test(name)) return plan;
+  // 「起止时间」是一段区间（2021.09-2025.06），不是一个日期：按文本原样写
+  if (plan.slot && /\.period$/.test(plan.slot)) return plan;
+  if ((String(plan.value || '').match(/(19|20)\d{2}/g) || []).length >= 2) return plan;
   if (!looksLikeDateValue(plan.value)) return plan;
   return { ...plan, kind: 'date', precision: 'day', enumRef: null };
 }

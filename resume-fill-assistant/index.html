@@ -14,6 +14,27 @@
   </header>
   <div id="notice" class="notice" role="status" aria-live="polite"></div>
 
+  <!-- 多份简历：不同岗位一份，投递时切换（数量不设上限） -->
+  <section class="library-bar" aria-label="简历管理">
+    <div class="library-row">
+      <select id="resume-select" aria-label="切换简历"></select>
+      <input id="resume-name" type="text" aria-label="简历名称" placeholder="简历名称">
+    </div>
+    <div class="library-row library-actions">
+      <button id="resume-new" class="link-button" type="button">＋ 新建</button>
+      <button id="resume-copy" class="link-button" type="button">复制</button>
+      <button id="resume-delete" class="link-button" type="button">删除</button>
+      <button id="resume-import" class="link-button" type="button">导入 JSON</button>
+      <button id="resume-export" class="link-button" type="button">导出 JSON</button>
+      <button id="resume-sample" class="link-button" type="button">示例简历</button>
+      <input id="resume-import-file" type="file" accept="application/json,.json" hidden>
+    </div>
+    <div id="progress" class="progress" aria-live="polite">
+      <div class="progress-text"></div>
+      <div class="progress-track"><div class="progress-fill"></div></div>
+    </div>
+  </section>
+
   <section id="report" class="report" hidden aria-label="填充报告">
     <div class="report-head">
       <strong>填充报告</strong>
@@ -27,7 +48,10 @@
   </section>
 
   <div class="layout">
-    <nav id="category-nav" class="category-nav" aria-label="资料分类"></nav>
+    <nav class="category-nav" aria-label="资料分类">
+      <div id="category-nav"></div>
+      <button id="apps-nav" class="nav-item apps-nav" type="button"><span>投递记录</span><span class="nav-count" id="apps-count"></span></button>
+    </nav>
     <main class="main-panel">
       <div class="section-heading">
         <div><p class="eyebrow">我的资料</p><h1 id="section-title">个人信息</h1></div>
@@ -36,6 +60,7 @@
       <p id="section-description" class="section-description"></p>
       <div id="records" class="records"></div>
       <div id="empty-state" class="empty-state" hidden>还没有填写内容。所有字段均为选填。</div>
+      <div id="apps-view" class="apps-view" hidden></div>
     </main>
   </div>
   <footer>填写前请检查资料；助手不会替你提交网申。</footer>

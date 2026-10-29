@@ -262,8 +262,8 @@ function profileOf() {
     },
   ];
   p.education = [
-    { 学校名称: '河海大学', 学历: '本科', 开始时间: '2021-09-01', 结束时间: '2025-06-30', 专业类别: '工学', 专业名称: '机械工程' },
-    { 学校名称: '同济大学', 学历: '硕士', 开始时间: '2025-09-01', 结束时间: '2027-06-30', 专业类别: '信息科学与技术类', 专业名称: '机器人与机电方向' },
+    { 学校名称: '东湖大学', 学历: '本科', 开始时间: '2021-09-01', 结束时间: '2025-06-30', 专业类别: '工学', 专业名称: '机械工程' },
+    { 学校名称: '西岭大学', 学历: '硕士', 开始时间: '2025-09-01', 结束时间: '2027-06-30', 专业类别: '信息科学与技术类', 专业名称: '智能制造方向' },
   ];
   p.languages = [
     { 证书类型: 'TOEFL', 语言成绩: '111' }, // 页面上已保存（只读卡：托福 / 111）
@@ -271,7 +271,7 @@ function profileOf() {
   ];
   p.internships = [
     {
-      单位名称: '辉瑞投资有限公司',
+      单位名称: '示例医药有限公司',
       开始时间: '2024-07-01',
       结束时间: '2024-09-30',
       实习岗位: '医学信息实习生',
@@ -337,8 +337,8 @@ console.log('\n[2] 端到端：卡片式录入（扩充 → 填写 → 卡片确
   const eduCard = cardOf(doc, '教育背景').find(c => !/最高学历/.test(c.querySelector('.section-title').textContent));
   const eduView = viewText(eduCard);
   ok('教育两段都点了确认、变成只读卡', eduCard.querySelectorAll('.section-object.edit_mode').length === 0, eduView);
-  ok('教育第 1 段：河海大学 / 本科 / 入学 2021-09-01 / 工学 / 机械工程', /河海大学.*本科.*2021-09-01.*2025-06-30.*工学.*机械工程/.test(eduView), eduView);
-  ok('教育第 2 段：同济大学 / 硕士 / 2025-09-01', /同济大学.*硕士.*2025-09-01.*2027-06-30.*信息科学与技术类.*机器人与机电方向/.test(eduView), eduView);
+  ok('教育第 1 段：东湖大学 / 本科 / 入学 2021-09-01 / 工学 / 机械工程', /东湖大学.*本科.*2021-09-01.*2025-06-30.*工学.*机械工程/.test(eduView), eduView);
+  ok('教育第 2 段：西岭大学 / 硕士 / 2025-09-01', /西岭大学.*硕士.*2025-09-01.*2027-06-30.*信息科学与技术类.*智能制造方向/.test(eduView), eduView);
 
   const lang = cardOf(doc, '英语水平')[0];
   const langView = viewText(lang);
@@ -350,7 +350,7 @@ console.log('\n[2] 端到端：卡片式录入（扩充 → 填写 → 卡片确
   const expView = viewText(exp);
   ok('实习第 2 段自动「添加」出来', exp.querySelectorAll('.section-object').length === 2, expView);
   ok('实习两段都确认成只读卡', exp.querySelectorAll('.section-object.edit_mode').length === 0, expView);
-  ok('实习第 1 段：公司 / 起止 / 岗位 / 职责', /辉瑞投资有限公司.*2024-07-01.*2024-09-30.*医学信息实习生.*文献检索与整理/.test(expView), expView);
+  ok('实习第 1 段：公司 / 起止 / 岗位 / 职责', /示例医药有限公司.*2024-07-01.*2024-09-30.*医学信息实习生.*文献检索与整理/.test(expView), expView);
   ok('实习第 2 段：某咨询公司 / 分析师', /某咨询公司.*2025-01-01.*2025-03-31.*分析师.*行业研究/.test(expView), expView);
 
   const yn = cardOf(doc, '实习经历').find(c => !c.querySelector('.add_btn'));
@@ -370,7 +370,7 @@ console.log('\n[3] 必填没填全：确认被站点拦下 → 报告如实说�
 {
   const { doc } = boot();
   const p = profileOf();
-  p.education[0] = { 学校名称: '河海大学', 学历: '本科' }; // 缺入学/毕业日期、专业
+  p.education[0] = { 学校名称: '东湖大学', 学历: '本科' }; // 缺入学/毕业日期、专业
   p.languages = [];
   p.internships = [];
   p.awards = [];
@@ -406,6 +406,42 @@ console.log('\n[5] 简历附件：标签落在文件名框上时，就近找到�
   ok('找到了旁边的文件控件（照片不往只收文档的控件里塞）', r1.reason === 'upload-type-mismatch', JSON.stringify(r1));
   const r2 = await writeUpload({ value: photo, field: { el: doc.querySelector('.titleLine'), container: doc.querySelector('.titleLine') } });
   ok('附近没有文件控件 → not-file-input', r2.reason === 'not-file-input', JSON.stringify(r2));
+}
+
+console.log('\n[6] 新分类 + 派生字段：项目经历 / 工作经历←实习 / 年龄 / 毕业院校');
+{
+  const html = `<!doctype html><html><body><form>
+    <div class="card"><div class="section-title">个人信息</div>
+      <div class="form-item"><label class="form-label">姓名</label><input id="n"></div>
+      <div class="form-item"><label class="form-label">年龄</label><input id="age"></div>
+      <div class="form-item"><label class="form-label">毕业院校</label><input id="gs"></div>
+      <div class="form-item"><label class="form-label">婚姻状况</label><select id="mar"><option value="">请选择</option><option>已婚</option><option>未婚</option></select></div>
+    </div>
+    <div class="card"><div class="section-title">项目经历</div>
+      <div class="form-item"><label class="form-label">项目名称</label><input id="pn"></div>
+      <div class="form-item"><label class="form-label">项目职责</label><textarea id="pd"></textarea></div>
+      <div class="form-item"><label class="form-label">起止时间</label><input id="pp"></div>
+    </div>
+    <div class="card"><div class="section-title">工作经历</div>
+      <div class="form-item"><label class="form-label">公司名称</label><input id="wc"></div>
+      <div class="form-item"><label class="form-label">职位</label><input id="wp"></div>
+    </div>
+  </form></body></html>`;
+  const d = new JSDOM(html, { pretendToBeVisual: true });
+  Object.assign(global, { window: d.window, document: d.window.document, Node: d.window.Node, HTMLInputElement: d.window.HTMLInputElement, HTMLTextAreaElement: d.window.HTMLTextAreaElement, HTMLSelectElement: d.window.HTMLSelectElement, getComputedStyle: d.window.getComputedStyle.bind(d.window) });
+  const p = defaultProfile();
+  p.personal = [{ 姓名: '王五', 出生日期: '2001-01-01', 婚姻状况: '未婚' }];
+  p.education = [{ 学校名称: '南山大学', 学历: '本科' }, { 学校名称: '北岸大学', 学历: '硕士' }];
+  p.projects = [{ 项目名称: '保温箱成本建模', 项目职责: '负责 DFM', 开始时间: '2025-01-01', 结束时间: '2025-05-01' }];
+  p.internships = [{ 单位名称: '示例汽车', 实习岗位: '工程实习生' }];
+  await fillPage(p, { bridge, expand: false });
+  const $ = id => d.window.document.getElementById(id);
+  ok('年龄按出生日期自动算出', /^\d{2}$/.test($('age').value), $('age').value);
+  ok('毕业院校取学历最高那段', $('gs').value === '北岸大学', $('gs').value);
+  ok('婚姻状况（新枚举）选中未婚', $('mar').value === '未婚', $('mar').value);
+  ok('项目经历分类填上', $('pn').value === '保温箱成本建模' && $('pd').value === '负责 DFM');
+  ok('起止时间自动拼接', $('pp').value === '2025.01-2025.05', $('pp').value);
+  ok('工作经历为空时用实习代替', $('wc').value === '示例汽车' && $('wp').value === '工程实习生', $('wc').value + '/' + $('wp').value);
 }
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败`);
