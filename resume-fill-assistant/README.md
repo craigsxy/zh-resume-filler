@@ -1,5 +1,7 @@
 # resume-fill-assistant · 简历一键填充助手
 
+> 本仓库源自 [millie-ni/resume-fill-assistant](https://github.com/millie-ni/resume-fill-assistant)，原作者 millie-ni，保留完整提交历史。原仓库未声明开源许可证，版权归原作者所有。
+
 Chrome Manifest V3 扩展：本地管理求职资料，按「语义槽」绑定网申字段、按控件类型适配写入。无法匹配的选项自动跳过，不写脏值、不自动提交。
 
 ## 功能
