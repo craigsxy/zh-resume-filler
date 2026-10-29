@@ -13,6 +13,8 @@ Chrome Manifest V3 扩展：本地管理求职资料，按「语义槽」绑定�
 - 资料库 18 个分类 / 241 个字段（个人信息、求职意向、教育、实习、项目、校园、工作、社会实践、技能、证书、外语、家庭、获奖、专利、论文、培训…），每个分类还能加自定义字段
 - 多份简历随时切换（不限数量），导入 / 导出 JSON，完成度统计，投递记录
 - 派生字段自动补：年龄、毕业院校/专业/时间、起止时间、证书认证；工作经历为空时自动用实习经历填
+- 可选 AI 善后（自带 API Key，OpenRouter / DeepSeek 等 OpenAI 兼容接口）：规则认不出的标签、对不上的下拉交给模型；敏感字段永不外发
+- 网页悬浮按钮：一键填写 / 选区填写；求职进度（状态 + 日程 + CSV 导出）；未补齐清单
 - 多段经历（教育 / 实习 / 在校职务 / 在校实践…）自动「添加」出第 n 段
 - 日期按网页能力自动降级（先试年月日，网页只收年月就写年月）
 - 枚举字段做选项适配，覆盖虚拟滚动列表、级联选择、年月选择器、可编辑下拉等真机形态
@@ -33,7 +35,7 @@ Chrome Manifest V3 扩展：本地管理求职资料，按「语义槽」绑定�
 ```bash
 npm install        # 安装依赖（esbuild + jsdom）
 npm run build      # 打包 src/ → content.bundle.js / panel.bundle.js
-npm test           # 全量回归：selftest / dom-test / beisen / panel / tupu
+npm test           # 全量回归：selftest / dom-test / beisen / panel / tupu / ai / float
 npm run watch      # 监听 src/ 改动自动重打包
 ```
 

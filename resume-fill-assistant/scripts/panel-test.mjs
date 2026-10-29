@@ -431,11 +431,79 @@ console.log('\n[16] 经历上移 / 下移 + 按学历排序按钮');
 console.log('\n[17] 投递记录视图');
 {
   click(document.querySelector('#apps-nav'));
-  ok('标题切到「投递记录」', document.querySelector('#section-title').textContent === '投递记录');
-  ok('没有记录时给出说明', /还没有投递记录/.test(document.querySelector('#apps-view').textContent));
+  ok('标题切到「求职进度」', document.querySelector('#section-title').textContent === '求职进度');
+  ok('没有记录时给出说明', /还没有求职记录/.test(document.querySelector('#apps-view').textContent));
   ok('资料卡片区被清空、添加按钮隐藏', !document.querySelector('#records .record-card') && document.querySelector('#add-record').hidden);
   navTo('个人信息');
   ok('切回分类后投递视图隐藏', document.querySelector('#apps-view').hidden);
+}
+
+console.log('\n[18] 未补齐清单 / 敏感字段待填写 / 一键加自定义字段 / 上手引导');
+{
+  navTo('个人信息');
+  const toggle = document.querySelector('#missing-toggle');
+  click(toggle);
+  const list = document.querySelector('#missing-list');
+  ok('点「查看未补齐项」展开清单', !list.hidden && list.querySelectorAll('.missing-item').length > 10);
+  ok('常问字段高亮排前面', list.querySelector('.missing-group .missing-item').classList.contains('core'));
+  const chip = [...list.querySelectorAll('.missing-item')].find(b => b.textContent === '出生日期');
+  click(chip);
+  ok('点一项跳到对应字段并高亮', document.activeElement && document.activeElement.getAttribute('aria-label') === '出生日期' && document.activeElement.closest('.field').classList.contains('flash'));
+  click(toggle);
+  ok('再点收起', list.hidden);
+  ok('空着的证件号码标「待填写」（黄色，不是报错）', /待填写/.test(fieldOf('证件号码').querySelector('label').textContent) && !!fieldOf('证件号码').querySelector('.field-tag.todo'));
+  ok('非敏感字段不标', !/待填写/.test(fieldOf('邮箱').querySelector('label').textContent));
+  panelMod.addCustomFieldFromPage('是否接受夜班', 'internships');
+  navTo('实习经历');
+  const names = [...document.querySelectorAll('#records .custom-name')].map(i => i.value);
+  ok('报告里认不出的标签一键加成该分类的自定义字段', names.includes('是否接受夜班'), JSON.stringify(names));
+  panelMod.addCustomFieldFromPage('是否接受夜班', 'internships');
+  navTo('实习经历');
+  ok('重复加不会出现两条', [...document.querySelectorAll('#records .custom-name')].filter(i => i.value === '是否接受夜班').length === (stored.resumeProfile.internships || []).length);
+  click(document.querySelector('#resume-new'));
+  await tick();
+  navTo('个人信息');
+  ok('空简历显示三步上手引导', !document.querySelector('#onboarding').hidden);
+  click(document.querySelector('#apps-nav'));
+  ok('求职进度页不显示引导', document.querySelector('#onboarding').hidden);
+}
+
+console.log('\n[19] 求职进度：手动添加 / 8 档状态 / 日程 / 按状态筛选');
+{
+  click(document.querySelector('#apps-nav'));
+  click(document.querySelector('#app-add'));
+  const rows = () => [...document.querySelectorAll('#apps-view .app-row')];
+  ok('手动添加一条', rows().length === 1);
+  const sel = rows()[0].querySelector('select[aria-label="求职状态"]');
+  const opts = [...sel.options].map(o => o.value);
+  ok('状态含 已收藏/已投递/筛选沟通/测评笔试/面试中/Offer/已接受/已拒绝', ['已收藏', '已投递', '筛选沟通', '测评/笔试', '面试中', 'Offer', '已接受', '已拒绝'].every(x => opts.includes(x)), opts.join(','));
+  const comp = rows()[0].querySelector('input[aria-label="公司"]');
+  comp.value = '辉瑞';
+  fireInput(comp);
+  sel.value = '面试中';
+  sel.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  const addEv = [...rows()[0].querySelectorAll('.link-button')].find(b => b.textContent === '＋日程');
+  click(addEv);
+  const at = rows()[0].querySelector('input[aria-label="日程时间"]');
+  const soon = new Date(Date.now() + 2 * 864e5);
+  const pad = n => String(n).padStart(2, '0');
+  at.value = `${soon.getFullYear()}-${pad(soon.getMonth() + 1)}-${pad(soon.getDate())}T10:00`;
+  at.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  const ty = rows()[0].querySelector('select[aria-label="日程类型"]');
+  ty.value = '面试';
+  ty.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
+  await tick(20);
+  ok('数据落库：状态 / 公司 / 日程', stored.applications[0].status === '面试中' && stored.applications[0].company === '辉瑞' && stored.applications[0].events[0].type === '面试');
+  const { upcomingEvents } = panelMod;
+  ok('近期日程能算出来', upcomingEvents(stored.applications).length === 1);
+  click(document.querySelector('#apps-nav'));
+  ok('近期日程面板显示「面试 · 辉瑞」', /面试 · 辉瑞/.test(document.querySelector('.app-upcoming').textContent));
+  click(document.querySelector('#app-add'));
+  const filterBtn = [...document.querySelectorAll('.app-filter')].find(b => /面试中/.test(b.textContent));
+  click(filterBtn);
+  ok('按状态筛选：只剩面试中那条', rows().length === 1 && /辉瑞/.test(rows()[0].textContent));
+  click([...document.querySelectorAll('.app-filter')].find(b => /面试中/.test(b.textContent)));
+  ok('再点取消筛选', rows().length === 2);
 }
 
 console.log(`\n结果：${pass} 通过 / ${fail} 失败\n`);

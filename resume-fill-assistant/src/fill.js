@@ -7,6 +7,7 @@ import { resetPanelMemo } from './adapters/select.js';
 import { resolveValue, primaryValue } from './resolver.js';
 import { withoutSavedRecords, commitCards } from './cards.js';
 import { deriveProfile } from './derive.js';
+import { aiAssist } from './ai.js';
 import { STRONG_KEYS, categoryById } from './schema.js';
 import * as bridgeApi from './bridge.js';
 import { sleep, tagOf, pathOf, setNativeValue, fire, numericOf } from './util.js';
@@ -40,7 +41,10 @@ export async function fillPage(profile, options = {}) {
   let expand = { added: 0, log: [] };
   let savedLog = [];
   try {
-    model = buildFormModel();
+    // 选区填写：只扫用户点选的那块区域，不做多段扩充
+    const root = options.root && options.root.isConnected ? options.root : undefined;
+    if (root) options = { ...options, expand: false };
+    model = buildFormModel(root);
     // v2.0.33 卡片式录入：已经以只读卡片保存在页面上的记录不再参与扩充和绑定，
     // 否则资料库 1 条 + 页面 0 个编辑块 → 再点一次「添加」→ 同一段录两遍
     try {
@@ -62,7 +66,7 @@ export async function fillPage(profile, options = {}) {
         }
       } catch (e) {
         expand = { added: 0, log: ['扩充经历区块时出错：' + String((e && e.message) || e)] };
-        model = buildFormModel();
+        model = buildFormModel(root);
       }
     }
     if (savedLog.length) expand = { ...expand, log: [...savedLog, ...(expand.log || [])] };
@@ -122,14 +126,16 @@ export async function fillPage(profile, options = {}) {
       continue;
     }
     if (!plan.slot) {
-      results.push({
+      const row = {
         ...base,
         status: 'skipped',
         reason: 'label-uncertain',
         parts: ((plan.field && plan.field.labelParts) || []).slice(0, 4),
         el: tagOf(plan.field.el),
         path: pathOf(plan.field.el),
-      });
+      };
+      results.push(row);
+      planResults.set(plan, row); // AI 善后要能找回这一行原地替换
       continue;
     }
     if (!plan.hasRecord) {
@@ -166,6 +172,16 @@ export async function fillPage(profile, options = {}) {
       filledTexts.push({ plan, res: pushed });
     }
     await sleep(40);
+  }
+
+  // AI 善后（v2.2.0）：规则认不出的标签、对不上的选项交给模型（见 ai.js；Key 只在 background）
+  let aiStat = null;
+  if (typeof options.aiClient === 'function') {
+    try {
+      aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient });
+    } catch (e) {
+      aiStat = { mapped: 0, options: 0, calls: 0, error: String((e && e.message) || e).slice(0, 120) };
+    }
   }
 
   // 收尾复核（v2.0.27 → v2.0.30）：个别站点会在**后续**某次重渲染里，把没走它自己状态的
@@ -291,8 +307,8 @@ export async function fillPage(profile, options = {}) {
       }
     } catch (_) {}
   }
-  if (round > 0) return summarize(results, model, expand);
-  return summarize(withCustomDiagnostics(profile, model, results), model, expand);
+  if (round > 0) return { ...summarize(results, model, expand), ai: aiStat };
+  return { ...summarize(withCustomDiagnostics(profile, model, results), model, expand), ai: aiStat };
 }
 
 /**

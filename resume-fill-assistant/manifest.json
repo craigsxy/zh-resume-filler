@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "简历一键填充助手",
-  "version": "2.1.1",
-  "description": "本地管理求职资料，通用适配各类网申（北森 / Moka / 图谱等）：按语义槽绑定字段、按控件类型写入，多段经历自动添加并确认。无法匹配的自动跳过，不写脏值、不自动提交。",
+  "version": "2.2.0",
+  "description": "本地管理求职资料，通用适配各类网申（北森 / Moka / 图谱等）：按语义槽绑定字段、按控件类型写入，多段经历自动添加并确认；可选 AI 善后识别。无法匹配的自动跳过，不写脏值、不自动提交。",
   "permissions": [
     "tabs",
     "storage",
@@ -27,5 +27,17 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "float.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
 }

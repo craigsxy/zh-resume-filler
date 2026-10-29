@@ -126,7 +126,7 @@ export async function writeSelectNative(plan) {
   const options = collectNativeOptions(sel);
   const m = matchOption(plan.resolved, options);
   if (!m.ok) {
-    return { status: 'skipped', reason: m.reason, available: options.map(o => o.label).slice(0, 20) };
+    return { status: 'skipped', reason: m.reason, available: options.map(o => o.label).slice(0, 20), allOptions: options.map(o => o.label).slice(0, 80) };
   }
   setNativeValue(sel, m.option.value);
   fire(sel, 'input', { bubbles: true });
@@ -1490,6 +1490,7 @@ export async function writeSelectCustom(plan) {
       status: 'skipped',
       reason: m.reason,
       available: options.map(o => o.label).slice(0, 20),
+      allOptions: options.map(o => o.label).slice(0, 80),
       panelText,
       panelSel: sel,
       probe,

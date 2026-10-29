@@ -858,8 +858,63 @@
   var LIB_KEY = "resumeLibrary";
   var APPS_KEY = "applications";
   var APPS_VIEW = "__apps";
+  var SETTINGS_VIEW = "__settings";
+  var AI_KEY = "aiSettings";
+  var UI_KEY = "uiSettings";
+  var AI_DEFAULTS = { enabled: false, apiKey: "", baseUrl: "https://openrouter.ai/api/v1", model: "deepseek/deepseek-v4.1-flash" };
+  var aiSettings = { ...AI_DEFAULTS };
+  var uiSettings = { floatButton: true };
   var library = { activeId: "r1", items: [{ id: "r1", name: "我的简历", updatedAt: Date.now() }] };
   var applications = [];
+  var lastTab = null;
+  var CORE_SLOTS = /* @__PURE__ */ new Set([
+    "personal.name",
+    "personal.gender",
+    "personal.birth",
+    "personal.idType",
+    "personal.idNo",
+    "personal.politics",
+    "personal.ethnicity",
+    "personal.mobile",
+    "personal.email",
+    "personal.nativePlace",
+    "personal.hukou",
+    "personal.highestDegree",
+    "personal.photo",
+    "personal.resume",
+    "intent.position",
+    "intent.city",
+    "edu.start",
+    "edu.end",
+    "edu.school",
+    "edu.major",
+    "edu.degreeLevel",
+    "edu.degreeName",
+    "edu.college",
+    "exp.start",
+    "exp.end",
+    "exp.company",
+    "exp.position",
+    "exp.desc",
+    "proj.name",
+    "proj.start",
+    "proj.end",
+    "proj.role",
+    "proj.desc",
+    "award.name",
+    "award.time",
+    "lang.certType",
+    "lang.score"
+  ]);
+  var TODO_SLOTS = /* @__PURE__ */ new Set([
+    "personal.idNo",
+    "personal.birth",
+    "personal.emergencyContact",
+    "personal.emergencyPhone",
+    "personal.hukou",
+    "personal.address",
+    "personal.ethnicity"
+  ]);
   var $ = (s) => document.querySelector(s);
   var profile = {};
   var activeId = "personal";
@@ -887,6 +942,10 @@
     const st = completion(profile);
     box.querySelector(".progress-text").innerHTML = `已填写 <b>${st.filled}</b> / ${st.total} 个字段 · 完成度 <b>${st.percent}%</b>` + (st.total - st.filled > 0 ? ` · 未补齐 ${st.total - st.filled} 项` : "");
     box.querySelector(".progress-fill").style.width = st.percent + "%";
+    const ml = $("#missing-list");
+    if (ml && !ml.hidden) renderMissing(st);
+    const onb = $("#onboarding");
+    if (onb) onb.hidden = !(st.filled < 8 && activeId !== APPS_VIEW && activeId !== SETTINGS_VIEW);
     document.querySelectorAll("#category-nav .nav-item").forEach((b) => {
       const c = CATEGORIES.find((x) => x.id === b.dataset.id);
       const cnt = b.querySelector(".nav-count");
@@ -906,6 +965,78 @@
         tag.textContent = n ? `未补齐 ${n} 项` : "已填全";
       });
     }
+  }
+  function renderMissing(st) {
+    const ml = $("#missing-list");
+    ml.replaceChildren();
+    let any = false;
+    for (const c of CATEGORIES) {
+      if (c.custom) continue;
+      const recs = (st.byCategory[c.id] || {}).records || [];
+      recs.forEach((r, i) => {
+        if (!r.missing.length) return;
+        any = true;
+        const g = document.createElement("div");
+        g.className = "missing-group";
+        const t = document.createElement("b");
+        t.textContent = (c.multiple ? `${c.name} ${i + 1}` : c.name) + ` · 未补齐 ${r.missing.length} 项`;
+        g.append(t);
+        const meta = (l) => c.fields.find((f) => f.label === l);
+        const sorted = r.missing.slice().sort((a, b) => (CORE_SLOTS.has(meta(b).slot) ? 1 : 0) - (CORE_SLOTS.has(meta(a).slot) ? 1 : 0));
+        for (const label of sorted) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "missing-item" + (CORE_SLOTS.has(meta(label).slot) ? " core" : "");
+          chip.textContent = label;
+          chip.onclick = () => jumpToField(c.id, i, label);
+          g.append(chip);
+        }
+        ml.append(g);
+      });
+    }
+    if (!any) {
+      const p = document.createElement("div");
+      p.className = "missing-group";
+      p.textContent = "全部填齐了（没有记录的分类不算缺）。";
+      ml.append(p);
+    }
+  }
+  function jumpToField(categoryId, index, label) {
+    activeId = categoryId;
+    renderNav();
+    renderSection();
+    const card = document.querySelectorAll("#records .record-card")[index];
+    const input = card && [...card.querySelectorAll(".field input, .field textarea")].find((x) => x.getAttribute("aria-label") === label);
+    if (!input) return;
+    const f = input.closest(".field");
+    try {
+      input.scrollIntoView({ block: "center", behavior: "smooth" });
+    } catch (_) {
+    }
+    try {
+      input.focus();
+    } catch (_) {
+    }
+    f.classList.add("flash");
+    setTimeout(() => f.classList.remove("flash"), 1600);
+  }
+  function addCustomFieldFromPage(label, categoryId) {
+    const name = String(label || "").trim();
+    if (!name) return false;
+    const c = CATEGORIES.find((x) => x.id === categoryId && !x.custom) || CATEGORIES.find((x) => x.id === "personal");
+    if (!Array.isArray(profile[c.id])) profile[c.id] = [];
+    if (!profile[c.id].length) profile[c.id].push({});
+    const key = normalize(name);
+    for (const r of profile[c.id]) {
+      if (!Array.isArray(r.__custom)) r.__custom = [];
+      if (!r.__custom.some((x) => normalize(x.name) === key)) r.__custom.push({ name, value: "" });
+    }
+    save();
+    activeId = c.id;
+    renderNav();
+    renderSection();
+    showNotice(`已在「${c.name}」加上自定义字段「${name}」，填上内容后再点一次填写。`);
+    return true;
   }
   function persistAll() {
     profile.schemaVersion = SCHEMA_VERSION;
@@ -982,6 +1113,33 @@
   function wireLibrary() {
     const sel = $("#resume-select");
     if (!sel) return;
+    $("#missing-toggle").onclick = () => {
+      const ml = $("#missing-list");
+      ml.hidden = !ml.hidden;
+      $("#missing-toggle").textContent = ml.hidden ? "查看未补齐项" : "收起未补齐项";
+      renderProgress();
+    };
+    $("#onb-import").onclick = () => $("#resume-import-file").click();
+    $("#onb-sample").onclick = () => $("#resume-sample").click();
+    $("#report-feedback").onclick = async () => {
+      const r = lastReport || {};
+      const rows = r.results || [];
+      const miss = [...new Set(rows.filter((x) => x.reason === "label-uncertain").map((x) => (x.parts || [])[0]).filter(Boolean))];
+      const unmatched = [...new Set(rows.filter((x) => x.reason === "custom-no-match" || x.reason === "option-no-match").map((x) => `${x.label}（${x.reason === "option-no-match" ? "选项对不上：" + x.value : "网页上没对上"}）`))];
+      const text = [
+        `站点：${lastTab && lastTab.url || "（未知）"}`,
+        `页面：${lastTab && lastTab.title || ""}`,
+        `插件版本：${chrome.runtime && chrome.runtime.getManifest && chrome.runtime.getManifest().version || ""}`,
+        `没认出的网页标签：${miss.join("、") || "无"}`,
+        `资料里有、但没填上：${unmatched.join("、") || "无"}`
+      ].join("\n");
+      try {
+        await navigator.clipboard.writeText(text);
+        showNotice("缺少字段清单已复制，发给开发者即可（不含你的资料内容）。");
+      } catch (_) {
+        showNotice("复制失败。", true);
+      }
+    };
     sel.onchange = () => switchResume(sel.value);
     $("#resume-name").oninput = () => {
       const cur = activeItem();
@@ -1038,7 +1196,66 @@
       showNotice("已新建一份示例简历，可以直接拿去测试网申页面。");
     };
   }
-  var APP_STATUS = ["已填写", "已投递", "笔试", "面试", "Offer", "未通过", "放弃"];
+  function renderAiBadge() {
+    const b = $("#ai-badge");
+    if (b) b.textContent = aiSettings.enabled && aiSettings.apiKey ? "AI" : "";
+  }
+  function saveAi() {
+    chrome.storage.local.set({ [AI_KEY]: aiSettings });
+    renderAiBadge();
+  }
+  function renderSettings() {
+    const en = $("#ai-enabled");
+    if (!en) return;
+    en.checked = !!aiSettings.enabled;
+    $("#ai-key").value = aiSettings.apiKey || "";
+    $("#ai-model").value = aiSettings.model || "";
+    $("#ai-base").value = aiSettings.baseUrl || "";
+    $("#float-enabled").checked = uiSettings.floatButton !== false;
+  }
+  function wireSettings() {
+    const en = $("#ai-enabled");
+    if (!en) return;
+    en.onchange = () => {
+      aiSettings.enabled = en.checked;
+      if (en.checked && !aiSettings.apiKey) showNotice("先填 API Key，AI 辅助才会生效。", true);
+      saveAi();
+    };
+    const bind = (sel, key, fallback) => {
+      $(sel).oninput = () => {
+        aiSettings[key] = $(sel).value.trim() || fallback;
+        saveAi();
+      };
+    };
+    bind("#ai-key", "apiKey", "");
+    bind("#ai-model", "model", AI_DEFAULTS.model);
+    bind("#ai-base", "baseUrl", AI_DEFAULTS.baseUrl);
+    $("#float-enabled").onchange = () => {
+      uiSettings.floatButton = $("#float-enabled").checked;
+      chrome.storage.local.set({ [UI_KEY]: uiSettings });
+    };
+    $("#ai-test").onclick = async () => {
+      const out = $("#ai-test-result");
+      out.className = "settings-result";
+      out.textContent = "测试中…";
+      try {
+        const res = await chrome.runtime.sendMessage({ type: "AI_TEST", settings: { ...aiSettings } });
+        if (res && res.ok) {
+          out.className = "settings-result ok";
+          out.textContent = `连接成功（${aiSettings.model}）`;
+        } else {
+          out.className = "settings-result bad";
+          out.textContent = "失败：" + (res && res.error || "没有响应");
+        }
+      } catch (e) {
+        out.className = "settings-result bad";
+        out.textContent = "失败：" + String(e && e.message || e);
+      }
+    };
+  }
+  var APP_STATUS = ["已填写", "已收藏", "已投递", "筛选沟通", "测评/笔试", "面试中", "Offer", "已接受", "已拒绝", "放弃"];
+  var EVENT_TYPES = ["笔试", "面试", "测评", "跟进", "截止", "其他"];
+  var appFilter = "";
   async function logApplication(tab, report) {
     try {
       const url = String(tab && tab.url || "");
@@ -1052,7 +1269,7 @@
       const key = url.split("#")[0];
       let row = applications.find((a) => a.key === key);
       if (!row) {
-        row = { id: uid(), key, url, host, title: String(tab && tab.title || host), status: "已填写", note: "", createdAt: Date.now() };
+        row = { id: uid(), key, url, host, title: String(tab && tab.title || host), company: "", position: "", status: "已填写", note: "", events: [], createdAt: Date.now() };
         applications.unshift(row);
       }
       row.updatedAt = Date.now();
@@ -1073,36 +1290,166 @@
   function saveApps() {
     chrome.storage.local.set({ [APPS_KEY]: applications });
   }
+  function addApplicationManually() {
+    applications.unshift({
+      id: uid(),
+      key: "manual:" + uid(),
+      url: "",
+      host: "",
+      title: "新的求职记录",
+      company: "",
+      position: "",
+      status: "已收藏",
+      note: "",
+      events: [],
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      manual: true
+    });
+    saveApps();
+    renderAppsCount();
+    renderApps();
+  }
+  function upcomingEvents(apps, now = Date.now()) {
+    const out = [];
+    for (const a of apps || []) {
+      for (const ev of a.events || []) {
+        const t = Date.parse(ev.at || "");
+        if (!isFinite(t) || t < now - 36e5 || t > now + 30 * 864e5) continue;
+        out.push({ app: a, ev, t });
+      }
+    }
+    return out.sort((x, y) => x.t - y.t);
+  }
+  function exportAppsCsv() {
+    const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const rows = [["公司/页面", "岗位", "状态", "简历", "网址", "备注", "日程", "最近更新"]];
+    for (const a of applications) {
+      rows.push([
+        a.company || a.title,
+        a.position || "",
+        a.status,
+        a.resume || "",
+        a.url || "",
+        a.note || "",
+        (a.events || []).map((e) => `${e.type} ${String(e.at || "").replace("T", " ")} ${e.note || ""}`.trim()).join("；"),
+        new Date(a.updatedAt || a.createdAt || Date.now()).toLocaleString()
+      ]);
+    }
+    const csv = "\uFEFF" + rows.map((r) => r.map(esc).join(",")).join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "求职进度.csv";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1e3);
+  }
   function renderApps() {
     const view = $("#apps-view");
     view.replaceChildren();
+    const bar = document.createElement("div");
+    bar.className = "apps-bar";
+    const counts = {};
+    for (const a of applications) counts[a.status] = (counts[a.status] || 0) + 1;
+    const chip = (label, value) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip app-filter" + (appFilter === value ? " on" : "");
+      b.innerHTML = `<b>${value ? counts[value] || 0 : applications.length}</b> ${label}`;
+      b.onclick = () => {
+        appFilter = appFilter === value ? "" : value;
+        renderApps();
+      };
+      return b;
+    };
+    bar.append(chip("全部", ""));
+    for (const st of APP_STATUS) if (counts[st]) bar.append(chip(st, st));
+    const tools = document.createElement("div");
+    tools.className = "apps-tools";
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "secondary";
+    addBtn.id = "app-add";
+    addBtn.textContent = "＋ 手动添加";
+    addBtn.onclick = addApplicationManually;
+    const csvBtn = document.createElement("button");
+    csvBtn.type = "button";
+    csvBtn.className = "link-button";
+    csvBtn.textContent = "导出 CSV";
+    csvBtn.onclick = exportAppsCsv;
+    tools.append(addBtn, csvBtn);
+    view.append(bar, tools);
+    const soon = upcomingEvents(applications);
+    if (soon.length) {
+      const box = document.createElement("div");
+      box.className = "app-upcoming";
+      const h = document.createElement("b");
+      h.textContent = "近期日程";
+      box.append(h);
+      for (const { app, ev, t } of soon.slice(0, 8)) {
+        const line = document.createElement("div");
+        const d = new Date(t);
+        line.textContent = `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")} · ${ev.type} · ${app.company || app.title}${ev.note ? " · " + ev.note : ""}`;
+        box.append(line);
+      }
+      view.append(box);
+    }
     if (!applications.length) {
       const p = document.createElement("div");
       p.className = "empty-state";
-      p.textContent = "还没有投递记录。每次点「填写当前网页」都会在这里记一笔，状态可以自己改。";
+      p.textContent = "还没有求职记录。每次点「填写当前网页」都会自动记一笔（同一页面不重复），也可以手动添加。";
       view.append(p);
       return;
     }
-    for (const a of applications) {
+    const list = appFilter ? applications.filter((a) => a.status === appFilter) : applications;
+    for (const a of list) {
+      if (!Array.isArray(a.events)) a.events = [];
       const row = document.createElement("div");
       row.className = "app-row";
       const top = document.createElement("div");
       top.className = "app-top";
-      const title = document.createElement("a");
+      const title = document.createElement(a.url ? "a" : "span");
       title.className = "app-title";
-      title.textContent = a.title || a.host;
-      title.href = a.url;
-      title.target = "_blank";
-      title.rel = "noreferrer";
+      title.textContent = a.company || a.title || a.host;
+      if (a.url) {
+        title.href = a.url;
+        title.target = "_blank";
+        title.rel = "noreferrer";
+      }
       const meta = document.createElement("span");
       meta.className = "app-meta";
       const d = new Date(a.updatedAt || a.createdAt || Date.now());
-      meta.textContent = `${d.getMonth() + 1}/${d.getDate()} · 填 ${a.filled || 0}${a.failed ? " · 失败 " + a.failed : ""}${a.resume ? " · " + a.resume : ""}`;
+      meta.textContent = `${d.getMonth() + 1}/${d.getDate()}${a.manual ? " · 手动" : ` · 填 ${a.filled || 0}${a.failed ? " · 失败 " + a.failed : ""}`}${a.resume ? " · " + a.resume : ""}`;
       top.append(title, meta);
+      const info = document.createElement("div");
+      info.className = "app-ctl";
+      const comp = document.createElement("input");
+      comp.type = "text";
+      comp.placeholder = "公司";
+      comp.value = a.company || "";
+      comp.setAttribute("aria-label", "公司");
+      comp.oninput = () => {
+        a.company = comp.value;
+        title.textContent = a.company || a.title || a.host;
+        saveApps();
+      };
+      const pos = document.createElement("input");
+      pos.type = "text";
+      pos.placeholder = "岗位";
+      pos.value = a.position || "";
+      pos.setAttribute("aria-label", "岗位");
+      pos.oninput = () => {
+        a.position = pos.value;
+        saveApps();
+      };
+      info.append(comp, pos);
       const ctl = document.createElement("div");
       ctl.className = "app-ctl";
       const st = document.createElement("select");
-      st.setAttribute("aria-label", "投递状态");
+      st.setAttribute("aria-label", "求职状态");
       for (const s0 of APP_STATUS) {
         const o = document.createElement("option");
         o.value = o.textContent = s0;
@@ -1111,15 +1458,26 @@
       }
       st.onchange = () => {
         a.status = st.value;
+        a.updatedAt = Date.now();
         saveApps();
+        renderApps();
       };
       const note = document.createElement("input");
       note.type = "text";
-      note.placeholder = "备注（岗位 / 笔试时间 / 内推人…）";
+      note.placeholder = "备注（内推人 / 笔试链接…）";
       note.value = a.note || "";
       note.oninput = () => {
         a.note = note.value;
         saveApps();
+      };
+      const addEv = document.createElement("button");
+      addEv.type = "button";
+      addEv.className = "link-button";
+      addEv.textContent = "＋日程";
+      addEv.onclick = () => {
+        a.events.push({ id: uid(), type: "笔试", at: "", note: "" });
+        saveApps();
+        renderApps();
       };
       const del = document.createElement("button");
       del.type = "button";
@@ -1132,8 +1490,51 @@
         renderAppsCount();
         renderApps();
       };
-      ctl.append(st, note, del);
-      row.append(top, ctl);
+      ctl.append(st, note, addEv, del);
+      row.append(top, info, ctl);
+      for (const ev of a.events) {
+        const er = document.createElement("div");
+        er.className = "app-ctl app-event";
+        const ty = document.createElement("select");
+        ty.setAttribute("aria-label", "日程类型");
+        for (const t0 of EVENT_TYPES) {
+          const o = document.createElement("option");
+          o.value = o.textContent = t0;
+          if (t0 === ev.type) o.selected = true;
+          ty.append(o);
+        }
+        ty.onchange = () => {
+          ev.type = ty.value;
+          saveApps();
+        };
+        const at = document.createElement("input");
+        at.type = "datetime-local";
+        at.value = ev.at || "";
+        at.setAttribute("aria-label", "日程时间");
+        at.onchange = () => {
+          ev.at = at.value;
+          saveApps();
+        };
+        const en = document.createElement("input");
+        en.type = "text";
+        en.placeholder = "说明（地点 / 链接）";
+        en.value = ev.note || "";
+        en.oninput = () => {
+          ev.note = en.value;
+          saveApps();
+        };
+        const ed = document.createElement("button");
+        ed.type = "button";
+        ed.className = "delete-button";
+        ed.textContent = "✕";
+        ed.onclick = () => {
+          a.events = a.events.filter((x) => x !== ev);
+          saveApps();
+          renderApps();
+        };
+        er.append(ty, at, en, ed);
+        row.append(er);
+      }
       view.append(row);
     }
   }
@@ -1168,6 +1569,10 @@
       if (lib && Array.isArray(lib.items) && lib.items.length) library = lib;
       const apps = (await chrome.storage.local.get(APPS_KEY))[APPS_KEY];
       if (Array.isArray(apps)) applications = apps;
+      const ai = (await chrome.storage.local.get(AI_KEY))[AI_KEY];
+      if (ai && typeof ai === "object") aiSettings = { ...AI_DEFAULTS, ...ai };
+      const ui = (await chrome.storage.local.get(UI_KEY))[UI_KEY];
+      if (ui && typeof ui === "object") uiSettings = { ...uiSettings, ...ui };
     } catch (_) {
     }
     if (!library.items.some((x) => x.id === library.activeId)) library.activeId = library.items[0].id;
@@ -1210,6 +1615,16 @@
       };
       nav.append(b);
     });
+    const st = $("#settings-nav");
+    if (st) {
+      st.classList.toggle("active", activeId === SETTINGS_VIEW);
+      st.onclick = () => {
+        activeId = SETTINGS_VIEW;
+        renderNav();
+        renderSection();
+      };
+    }
+    renderAiBadge();
     const apps = $("#apps-nav");
     if (apps) {
       apps.classList.toggle("active", activeId === APPS_VIEW);
@@ -1255,6 +1670,10 @@
     const raw = record[field.label];
     const monthOnly = field.kind === "date" && typeof raw === "string" && /^\d{4}-\d{2}$/.test(raw);
     if (monthOnly) addTag(label, "仅年月");
+    if (TODO_SLOTS.has(field.slot) && !String(raw ?? "").trim()) {
+      addTag(label, "待填写");
+      label.lastChild.classList.add("todo");
+    }
     if (!isPhoto) {
       el.value = raw || "";
       if (monthOnly) el.value = `${raw}-01`;
@@ -1467,9 +1886,23 @@
   }
   function renderSection() {
     const appsView = $("#apps-view");
+    const settingsView = $("#settings-view");
+    if (settingsView) settingsView.hidden = activeId !== SETTINGS_VIEW;
+    if (activeId === SETTINGS_VIEW) {
+      $("#section-title").textContent = "设置";
+      $("#section-description").textContent = "只存在本机浏览器。";
+      $("#add-record").hidden = true;
+      const sortBtn = $("#sort-edu");
+      if (sortBtn) sortBtn.hidden = true;
+      $("#records").replaceChildren();
+      $("#empty-state").hidden = true;
+      if (appsView) appsView.hidden = true;
+      renderSettings();
+      return;
+    }
     if (activeId === APPS_VIEW) {
-      $("#section-title").textContent = "投递记录";
-      $("#section-description").textContent = "每次填写网页自动记一笔；状态和备注自己维护，只存在本机。";
+      $("#section-title").textContent = "求职进度";
+      $("#section-description").textContent = "每次填写网页自动记一笔（同一页面不重复）；状态、日程、备注自己维护，只存在本机，不限保留时间。";
       $("#add-record").hidden = true;
       const sortBtn = $("#sort-edu");
       if (sortBtn) sortBtn.hidden = true;
@@ -1656,6 +2089,13 @@
       line.textContent = (added > 0 ? `自动新增 ${added} 个经历区块：` : onlySaved ? "多段经历：" : "未能自动新增经历区块：") + log;
       body.append(line);
     }
+    if (report.ai) {
+      const line = document.createElement("p");
+      line.className = "report-sections";
+      const a = report.ai;
+      line.textContent = a.error ? `AI 善后出错：${a.error}（规则部分照常完成）` : `AI 善后：调用 ${a.calls} 次，补认标签 ${a.mapped} 个，补选下拉 ${a.options} 个。`;
+      body.append(line);
+    }
     if (report.reasonCounts && Object.keys(report.reasonCounts).length) {
       const line = document.createElement("p");
       line.className = "report-reasons";
@@ -1689,13 +2129,24 @@
         r.section ? `${r.section}${r.block > 0 ? " #" + (r.block + 1) : ""}` : "未识别区块",
         r.label || "（未取到标签）",
         r.value,
-        STATUS_TEXT[statusKey] || r.status,
+        (STATUS_TEXT[statusKey] || r.status) + (r.ai && r.status === "filled" ? "（AI）" : ""),
         [reason + downgraded + padded + extra + attempts + parts + hints + panelText, r.readback && r.status !== "filled" ? `回读：${r.readback}` : ""].filter(Boolean).join("；")
       ];
       cells.forEach((text, i) => {
         const td = document.createElement("td");
         td.textContent = text || "";
         if (i === 3) td.className = `st st-${statusKey}`;
+        if (i === 4 && r.reason === "label-uncertain") {
+          const lbl = String((r.parts || [])[0] || "").trim();
+          if (lbl.length >= 2 && lbl.length <= 30 && !/(同意|授权|隐私|协议|条款)/.test(lbl)) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "add-custom";
+            b.textContent = `＋把「${lbl}」加为自定义字段`;
+            b.onclick = () => addCustomFieldFromPage(lbl, r.categoryId);
+            td.append(document.createElement("br"), b);
+          }
+        }
         tr.append(td);
       });
       tbody.append(tr);
@@ -1740,7 +2191,8 @@
         }
         await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.bundle.js"] });
       };
-      const send = () => chrome.tabs.sendMessage(tab.id, { type: "FILL_FORM", profile });
+      const ai = !!(aiSettings.enabled && aiSettings.apiKey);
+      const send = () => chrome.tabs.sendMessage(tab.id, { type: "FILL_FORM", profile, ai });
       await inject();
       let result;
       try {
@@ -1754,6 +2206,7 @@
         }
       }
       lastReport = result;
+      lastTab = { url: tab.url, title: tab.title };
       if (result && !result.error && result.found) logApplication(tab, result);
       if (result && result.error) {
         showNotice(`填写中断：${result.error}`, true);
@@ -1774,6 +2227,24 @@
       btn.disabled = false;
     }
   };
+  try {
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      if (changes.lastFillReport && changes.lastFillReport.newValue) {
+        const v = changes.lastFillReport.newValue;
+        lastReport = v.report;
+        lastTab = { url: v.url, title: v.title };
+        renderReport(v.report);
+      }
+      if (changes.applications && Array.isArray(changes.applications.newValue)) {
+        applications = changes.applications.newValue;
+        renderAppsCount();
+        if (activeId === APPS_VIEW) renderApps();
+      }
+    });
+  } catch (_) {
+  }
   wireLibrary();
+  wireSettings();
   load();
 })();

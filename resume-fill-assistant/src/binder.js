@@ -288,7 +288,7 @@ function looksLikeDateValue(v) {
  * 触发条件：名字像日期 + 值确实是个日期。
  * 已经声明为 date 的（meta.kind === 'date'）不动。
  */
-function promoteToDate(plan) {
+export function promoteToDate(plan) {
   if (!plan || plan.kind === 'date') return plan;
   const name = String(plan.label || '') + ' ' + String((plan.field && plan.field.label) || '');
   if (!DATE_WORD_RE.test(name)) return plan;
@@ -314,7 +314,7 @@ function promoteToDate(plan) {
  * 但**值本身是用户认真填的**，不该跟着一起丢。
  * 只认非空值，避免空串挡住后面的查找。
  */
-function recordValue(record, meta) {
+export function recordValue(record, meta) {
   if (!record || !meta) return '';
   const direct = record[meta.label];
   if (String(direct ?? '').trim()) return direct;

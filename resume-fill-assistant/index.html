@@ -32,6 +32,11 @@
     <div id="progress" class="progress" aria-live="polite">
       <div class="progress-text"></div>
       <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="progress-tools">
+        <span class="optional-note">所有信息都非必填，敏感信息按需再填</span>
+        <button id="missing-toggle" class="link-button" type="button">查看未补齐项</button>
+      </div>
+      <div id="missing-list" class="missing-list" hidden></div>
     </div>
   </section>
 
@@ -39,6 +44,7 @@
     <div class="report-head">
       <strong>填充报告</strong>
       <div class="report-actions">
+        <button id="report-feedback" class="link-button" type="button">反馈缺少字段</button>
         <button id="report-copy" class="link-button" type="button">复制诊断</button>
         <button id="report-close" class="link-button" type="button">收起</button>
       </div>
@@ -50,7 +56,8 @@
   <div class="layout">
     <nav class="category-nav" aria-label="资料分类">
       <div id="category-nav"></div>
-      <button id="apps-nav" class="nav-item apps-nav" type="button"><span>投递记录</span><span class="nav-count" id="apps-count"></span></button>
+      <button id="apps-nav" class="nav-item apps-nav" type="button"><span>求职进度</span><span class="nav-count" id="apps-count"></span></button>
+      <button id="settings-nav" class="nav-item" type="button"><span>设置</span><span class="nav-count" id="ai-badge"></span></button>
     </nav>
     <main class="main-panel">
       <div class="section-heading">
@@ -58,9 +65,47 @@
         <button id="add-record" class="secondary" type="button">＋ 添加记录</button>
       </div>
       <p id="section-description" class="section-description"></p>
+      <div id="onboarding" class="onboarding" hidden>
+        <strong>三步开始</strong>
+        <ol>
+          <li>导入资料 JSON，或者在左边各分类里直接填（都是选填）</li>
+          <li>打开网申页面，点右上角「填写当前网页」（或网页右下角的悬浮按钮）</li>
+          <li>看填充报告：没填上的会写原因；认不出的标签可以一键加成自定义字段</li>
+        </ol>
+        <div class="onboarding-actions">
+          <button id="onb-import" class="secondary" type="button">导入 JSON</button>
+          <button id="onb-sample" class="link-button" type="button">先用示例简历试试</button>
+        </div>
+      </div>
       <div id="records" class="records"></div>
       <div id="empty-state" class="empty-state" hidden>还没有填写内容。所有字段均为选填。</div>
       <div id="apps-view" class="apps-view" hidden></div>
+      <div id="settings-view" class="settings-view" hidden>
+        <section class="record-card">
+          <div class="record-header"><span class="record-title">AI 辅助识别（可选）</span></div>
+          <p class="section-description">规则认不出的字段、对不上的下拉选项，交给大模型善后。用你自己的 API Key（OpenRouter 或任何 OpenAI 兼容接口），费用很低：一次填写通常只有 1~2 次调用。</p>
+          <label class="switch-row"><input id="ai-enabled" type="checkbox"> 开启 AI 辅助</label>
+          <div class="field-grid">
+            <div class="field wide"><label for="ai-key">API Key</label><input id="ai-key" type="password" autocomplete="off" placeholder="sk-or-v1-…（只存在本机浏览器）"></div>
+            <div class="field"><label for="ai-model">模型</label><input id="ai-model" type="text" placeholder="deepseek/deepseek-v4.1-flash"></div>
+            <div class="field"><label for="ai-base">接口地址</label><input id="ai-base" type="text" placeholder="https://openrouter.ai/api/v1"></div>
+          </div>
+          <div class="settings-actions">
+            <button id="ai-test" class="secondary" type="button">测试连接</button>
+            <span id="ai-test-result" class="settings-result"></span>
+          </div>
+          <ul class="privacy-list">
+            <li>认标签时只发送<b>网页上的字段标签</b>和<b>你资料里有值的字段名称</b>，不发送任何资料内容。</li>
+            <li>挑下拉选项时，会发送<b>该字段的资料值</b>和网页选项（如「专业类别」「信息来源」）；姓名、证件号、手机、邮箱、地址、生日、紧急联系人、学号等敏感字段<b>永远不发</b>。</li>
+            <li>API Key 只存在本机，由插件后台直接调用接口；网页和内容脚本都拿不到。导出 JSON 不包含 Key。</li>
+            <li>AI 只在规则失败时才调用；它给的选项必须是网页上真实存在的，编造的一律不用。</li>
+          </ul>
+        </section>
+        <section class="record-card">
+          <div class="record-header"><span class="record-title">网页悬浮按钮</span></div>
+          <label class="switch-row"><input id="float-enabled" type="checkbox"> 在有表单的网页右下角显示悬浮按钮（一键填写 / 选区填写）</label>
+        </section>
+      </div>
     </main>
   </div>
   <footer>填写前请检查资料；助手不会替你提交网申。</footer>

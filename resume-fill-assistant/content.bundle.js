@@ -2549,7 +2549,7 @@
     const options = collectNativeOptions(sel);
     const m = matchOption(plan.resolved, options);
     if (!m.ok) {
-      return { status: "skipped", reason: m.reason, available: options.map((o) => o.label).slice(0, 20) };
+      return { status: "skipped", reason: m.reason, available: options.map((o) => o.label).slice(0, 20), allOptions: options.map((o) => o.label).slice(0, 80) };
     }
     setNativeValue(sel, m.option.value);
     fire(sel, "input", { bubbles: true });
@@ -3540,6 +3540,7 @@
         status: "skipped",
         reason: m.reason,
         available: options.map((o) => o.label).slice(0, 20),
+        allOptions: options.map((o) => o.label).slice(0, 80),
         panelText,
         panelSel: sel,
         probe,
@@ -4900,6 +4901,235 @@
     return out;
   }
 
+  // src/ai.js
+  var MAX_FIELDS = 40;
+  var MAX_SLOTS = 160;
+  var MIN_CONFIDENCE = 0.7;
+  var SENSITIVE_SLOTS = /* @__PURE__ */ new Set([
+    "personal.name",
+    "personal.pinyin",
+    "personal.englishName",
+    "personal.idNo",
+    "personal.mobile",
+    "personal.email",
+    "personal.wechat",
+    "personal.qq",
+    "personal.address",
+    "personal.mailingAddress",
+    "personal.emergencyContact",
+    "personal.emergencyPhone",
+    "personal.birth",
+    "edu.studentNo",
+    "edu.certNo",
+    "edu.degreeCertNo",
+    "family.name",
+    "family.phone"
+  ]);
+  var has2 = (v) => v != null && typeof v !== "object" && String(v).trim() !== "";
+  function parseJsonReply(text) {
+    const s = String(text || "").trim();
+    const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const body = fence ? fence[1] : s;
+    const a = body.indexOf("{");
+    const b = body.lastIndexOf("}");
+    if (a < 0 || b <= a) return null;
+    try {
+      return JSON.parse(body.slice(a, b + 1));
+    } catch (_) {
+      return null;
+    }
+  }
+  function slotCatalog(profile) {
+    const out = [];
+    for (const c of CATEGORIES) {
+      if (c.custom) continue;
+      const recs = profile && profile[c.id] || [];
+      for (const f of c.fields) {
+        if (f.kind === "upload") continue;
+        if (!recs.some((r) => r && has2(recordValue(r, f)))) continue;
+        out.push({ id: f.slot, name: `${c.name}·${f.label}` });
+      }
+    }
+    for (const cf of customFieldsOf(profile || {})) {
+      if (!has2(cf.value)) continue;
+      out.push({ id: cf.slot, name: `自定义·${cf.name}`, custom: cf });
+    }
+    return out.slice(0, MAX_SLOTS);
+  }
+  var LABEL_SYSTEM = '你是中文网申表单字段匹配助手。给你网页上一组"没认出来的表单字段"（标签、所在区块、控件类型）和求职者资料库里"已填写的字段名称"清单。请判断每个网页字段对应资料库里的哪一个字段。只有含义确实相同才匹配（同义、措辞不同、带说明文字都算），不确定、或资料库里没有对应字段就给 null。「是否…」类问题只能匹配到同样的「是否…」字段。授权、同意、隐私条款类勾选一律 null。只输出 JSON：{"matches":[{"field":"字段编号","slot":"资料字段编号或null","confidence":0到1}]}';
+  var OPTION_SYSTEM = '你是中文网申表单的下拉选项匹配助手。每一项给你：字段名、求职者资料里的值、网页下拉的全部选项。请从选项里挑出与资料值含义最接近、填上去不会误导招聘方的那一个；资料值里可能用「|」写了多个备选、用「/」写了层级路径，都可以参考。如果没有任何选项合适，给 null，宁缺毋滥。选项必须原样照抄。只输出 JSON：{"choices":[{"id":"编号","option":"选项原文或null"}]}';
+  function buildLabelRequest(plans, catalog) {
+    const fields = plans.slice(0, MAX_FIELDS).map((p, i) => ({
+      field: `f${i}`,
+      label: [...new Set((p.field.labelParts || []).concat(p.field.label || []))].filter(Boolean).slice(0, 4),
+      section: p.sectionTitle || "",
+      control: p.field.controlKind || ""
+    }));
+    const user = JSON.stringify({ fields, slots: catalog.map((s) => ({ slot: s.id, name: s.name })) });
+    return [
+      { role: "system", content: LABEL_SYSTEM },
+      { role: "user", content: user }
+    ];
+  }
+  function buildOptionRequest(items) {
+    const user = JSON.stringify({
+      items: items.map((it, i) => ({ id: `o${i}`, field: it.label, value: it.value, options: it.options }))
+    });
+    return [
+      { role: "system", content: OPTION_SYSTEM },
+      { role: "user", content: user }
+    ];
+  }
+  function eligibleForLabel(plan, rowOf) {
+    if (!plan || plan.dup) return false;
+    if (plan.slot) {
+      const row = rowOf && rowOf.get(plan);
+      if (!row || row.reason !== "option-no-match" || !(plan.matchScore < 1)) return false;
+    }
+    const ck = plan.field && plan.field.controlKind;
+    if (ck === "CHECKBOX_GROUP" || ck === "UPLOAD") return false;
+    const parts = (plan.field.labelParts || []).filter(Boolean);
+    if (!parts.length) return false;
+    if (parts.every((p) => /(同意|授权|隐私|协议|条款)/.test(p))) return false;
+    return true;
+  }
+  function planForSlot(plan, slotId, catalog, profile, siblings) {
+    const hit = catalog.find((s) => s.id === slotId);
+    if (!hit) return null;
+    if (hit.custom) {
+      return {
+        ...plan,
+        slot: hit.custom.slot,
+        label: hit.custom.name,
+        kind: "text",
+        enumRef: null,
+        value: hit.custom.value,
+        hasRecord: true,
+        viaAi: true
+      };
+    }
+    const meta = FIELD_BY_SLOT.get(slotId);
+    if (!meta) return null;
+    const { field, category } = meta;
+    const recs = profile[category.id] || [];
+    const sib = siblings.find((p) => p.block === plan.block && p.categoryId === category.id && p.recordIndex != null);
+    let record = sib ? recs[sib.recordIndex] : null;
+    if (!record || !has2(recordValue(record, field))) record = recs.find((r) => r && has2(recordValue(r, field))) || null;
+    if (!record) return null;
+    return promoteToDate({
+      ...plan,
+      slot: field.slot,
+      label: field.label,
+      kind: field.kind,
+      precision: field.precision || null,
+      enumRef: field.enumRef || null,
+      categoryId: category.id,
+      value: recordValue(record, field),
+      hasRecord: true,
+      viaAi: true
+    });
+  }
+  async function aiAssist(ctx) {
+    const { plans, results, rowOf, profile, writeField: writeField2, deps, aiClient: aiClient2 } = ctx;
+    const stat = { mapped: 0, options: 0, calls: 0 };
+    const replace = (plan, row) => {
+      const old = rowOf.get(plan);
+      const i = old ? results.indexOf(old) : -1;
+      if (i >= 0) results[i] = row;
+      else results.push(row);
+      rowOf.set(plan, row);
+    };
+    const baseRow = (plan, res, note) => ({
+      section: plan.sectionTitle || "",
+      categoryId: plan.categoryId || "",
+      block: plan.blockIndex,
+      label: plan.label || plan.field.label,
+      slot: plan.slot || "",
+      value: String(primaryValue(plan.value ?? "")),
+      kind: plan.kind || "",
+      controlKind: plan.field.controlKind,
+      ...res,
+      ai: note
+    });
+    try {
+      const todo = plans.filter((p) => eligibleForLabel(p, rowOf));
+      const catalog = slotCatalog(profile);
+      if (todo.length && catalog.length) {
+        stat.calls++;
+        const reply = await aiClient2(buildLabelRequest(todo, catalog));
+        const json = parseJsonReply(reply);
+        const matches = json && Array.isArray(json.matches) && json.matches || [];
+        const taken = /* @__PURE__ */ new Map();
+        const takenHas = (b, slot) => !!(taken.get(b) && taken.get(b).has(slot));
+        const takenAdd = (b, slot) => {
+          if (!taken.has(b)) taken.set(b, /* @__PURE__ */ new Set());
+          taken.get(b).add(slot);
+        };
+        for (const p of plans) if (p.slot && rowOf.get(p) && rowOf.get(p).status === "filled") takenAdd(p.block, p.slot);
+        for (const m of matches) {
+          const idx = Number(String(m && m.field).replace(/^f/, ""));
+          const plan = todo[idx];
+          if (!plan || !m.slot || Number(m.confidence || 0) < MIN_CONFIDENCE) continue;
+          if (plan.slot && String(m.slot) === plan.slot) continue;
+          const next = planForSlot(plan, String(m.slot), catalog, profile, plans);
+          if (!next || !has2(primaryValue(next.value))) continue;
+          if (takenHas(plan.block, next.slot)) continue;
+          takenAdd(plan.block, next.slot);
+          let res;
+          try {
+            next.resolved = resolveValue(next.value, next.enumRef || null);
+            res = await writeField2(next, deps);
+          } catch (e) {
+            res = { status: "failed", reason: "exception:" + String(e && e.message || e).slice(0, 80) };
+          }
+          Object.assign(plan, { slot: next.slot, label: next.label, kind: next.kind, value: next.value, categoryId: next.categoryId, enumRef: next.enumRef, viaAi: true });
+          replace(plan, baseRow(next, res, "ai-mapped"));
+          if (res.status === "filled") stat.mapped++;
+        }
+      }
+    } catch (e) {
+      stat.error = String(e && e.message || e).slice(0, 120);
+    }
+    try {
+      const items = [];
+      for (const plan of plans) {
+        const row = rowOf.get(plan);
+        if (!row || row.reason !== "option-no-match") continue;
+        if (SENSITIVE_SLOTS.has(plan.slot)) continue;
+        const opts = (row.allOptions || row.available || []).filter(Boolean).slice(0, 80);
+        if (opts.length < 2) continue;
+        items.push({ plan, label: plan.label || plan.field.label, value: String(plan.value ?? ""), options: opts });
+      }
+      if (items.length) {
+        stat.calls++;
+        const reply = await aiClient2(buildOptionRequest(items));
+        const json = parseJsonReply(reply);
+        const choices = json && Array.isArray(json.choices) && json.choices || [];
+        for (const c of choices) {
+          const it = items[Number(String(c && c.id).replace(/^o/, ""))];
+          if (!it || !c.option) continue;
+          const exact = it.options.find((o) => normalize(o) === normalize(c.option));
+          if (!exact) continue;
+          const next = { ...it.plan, value: exact, enumRef: null, viaAi: true };
+          let res;
+          try {
+            next.resolved = resolveValue(exact, null);
+            res = await writeField2(next, deps);
+          } catch (e) {
+            res = { status: "failed", reason: "exception:" + String(e && e.message || e).slice(0, 80) };
+          }
+          const row = baseRow(it.plan, res, "ai-option");
+          row.value = `${String(it.plan.value)} → ${exact}`;
+          replace(it.plan, row);
+          if (res.status === "filled") stat.options++;
+        }
+      }
+    } catch (e) {
+      stat.error = stat.error || String(e && e.message || e).slice(0, 120);
+    }
+    return stat;
+  }
+
   // src/bridge.js
   var bridge_exports = {};
   __export(bridge_exports, {
@@ -5008,7 +5238,9 @@
     let expand = { added: 0, log: [] };
     let savedLog = [];
     try {
-      model = buildFormModel();
+      const root = options.root && options.root.isConnected ? options.root : void 0;
+      if (root) options = { ...options, expand: false };
+      model = buildFormModel(root);
       try {
         const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
         profile = sv.profile;
@@ -5024,7 +5256,7 @@
           }
         } catch (e) {
           expand = { added: 0, log: ["扩充经历区块时出错：" + String(e && e.message || e)] };
-          model = buildFormModel();
+          model = buildFormModel(root);
         }
       }
       if (savedLog.length) expand = { ...expand, log: [...savedLog, ...expand.log || []] };
@@ -5073,14 +5305,16 @@
         continue;
       }
       if (!plan.slot) {
-        results.push({
+        const row = {
           ...base,
           status: "skipped",
           reason: "label-uncertain",
           parts: (plan.field && plan.field.labelParts || []).slice(0, 4),
           el: tagOf(plan.field.el),
           path: pathOf(plan.field.el)
-        });
+        };
+        results.push(row);
+        planResults.set(plan, row);
         continue;
       }
       if (!plan.hasRecord) {
@@ -5111,6 +5345,14 @@
         filledTexts.push({ plan, res: pushed });
       }
       await sleep(40);
+    }
+    let aiStat = null;
+    if (typeof options.aiClient === "function") {
+      try {
+        aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient });
+      } catch (e) {
+        aiStat = { mapped: 0, options: 0, calls: 0, error: String(e && e.message || e).slice(0, 120) };
+      }
     }
     const readVal = (el) => {
       try {
@@ -5217,8 +5459,8 @@
       } catch (_) {
       }
     }
-    if (round > 0) return summarize(results, model, expand);
-    return summarize(withCustomDiagnostics(profile, model, results), model, expand);
+    if (round > 0) return { ...summarize(results, model, expand), ai: aiStat };
+    return { ...summarize(withCustomDiagnostics(profile, model, results), model, expand), ai: aiStat };
   }
   function withCustomDiagnostics(profile, model, results) {
     let defined;
@@ -5283,13 +5525,31 @@
   }
 
   // src/content-entry.js
+  function aiClient(messages) {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.runtime.sendMessage({ type: "AI_CHAT", messages }, (res) => {
+          const err = chrome.runtime.lastError;
+          if (err) return reject(new Error(err.message));
+          if (!res || !res.ok) return reject(new Error(res && res.error || "AI 请求失败"));
+          resolve(res.content);
+        });
+      } catch (e) {
+        reject(e);
+      }
+    });
+  }
   if (!window.__saaContentReady) {
     window.__saaContentReady = true;
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       if (!msg || msg.type !== "FILL_FORM") return false;
       (async () => {
         try {
-          const report = await fillPage(msg.profile || {}, { bridge: bridge_exports });
+          const report = await fillPage(msg.profile || {}, {
+            bridge: bridge_exports,
+            aiClient: msg.ai ? aiClient : null,
+            root: msg.region ? window.__saaRegionRoot || null : null
+          });
           sendResponse(report);
         } catch (e) {
           sendResponse({ error: String(e && e.message || e), found: false });
