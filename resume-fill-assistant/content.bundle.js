@@ -954,6 +954,23 @@
     if (!/^[A-Za-z][A-Za-z0-9_+#.\-]*$/.test(s)) return false;
     return !LATIN_LABEL_STOP.test(s);
   }
+  var POPUP_SEL = '[class*="dropdown"],[class*="Dropdown"],[class*="popover"],[class*="popup"],[class*="Popup"],[class*="picker-container"],[class*="select-menu"],[class*="tooltip"],[role="listbox"],[role="option"],[role="menu"],[role="tooltip"]';
+  function isPopupText(n) {
+    if (!n || !n.closest) return false;
+    try {
+      if (n.closest(POPUP_SEL)) return true;
+      if (n.querySelector && n.querySelector('[role="option"],li[class*="item"],li[class*="option"]')) return true;
+    } catch (_) {
+    }
+    return false;
+  }
+  function hiddenNode(n) {
+    try {
+      return !isVisible(n);
+    } catch (_) {
+      return false;
+    }
+  }
   function isExplicitLabel(n) {
     if (!n || !n.tagName) return false;
     if (n.tagName === "LABEL") return true;
@@ -978,6 +995,7 @@
         if (n.contains(el)) continue;
         if (isOptionish(n)) continue;
         if (countFields(n) > 0) continue;
+        if (isPopupText(n) || hiddenNode(n)) continue;
         add(shortText(n, 40), true, isExplicitLabel(n));
       }
     } catch (_) {
@@ -986,10 +1004,11 @@
       if (k.contains && k.contains(el)) continue;
       if (isOptionish(k)) continue;
       if (countFields(k) > 0) continue;
+      if (isPopupText(k) || hiddenNode(k)) continue;
       add(shortText(k, 24));
     }
     const prev = node.previousElementSibling;
-    if (prev && !isOptionish(prev) && !(prev.contains && prev.contains(el)) && countFields(prev) === 0) {
+    if (prev && !isOptionish(prev) && !(prev.contains && prev.contains(el)) && countFields(prev) === 0 && !isPopupText(prev) && !hiddenNode(prev)) {
       const t = shortText(prev, 24);
       const looksHeader = /(title|header|head|caption|legend)/i.test(String(prev.className || ""));
       if (!(looksHeader && matchSection(cleanLabel(t)))) add(t);
@@ -1335,6 +1354,37 @@
     }
     return null;
   }
+  var STATE_TOKEN_RE = /(active|edit|mode|focus|error|selected|hover|open|checked|disabled|readonly|current|expand|collapse|^has-|^is-|^ng-|^v-)/i;
+  function cardSig(el) {
+    const tokens = String(el.className || "").split(/\s+/).filter((t) => t && !STATE_TOKEN_RE.test(t)).sort();
+    return el.tagName + "." + tokens.join(".");
+  }
+  function splitBySiblingCards(sectionFields, sectionContainer) {
+    if (sectionFields.length < 4) return null;
+    const first = sectionFields[0].container;
+    for (let a = first; a && a !== sectionContainer && a !== document.body; a = a.parentElement) {
+      const parent = a.parentElement;
+      if (!parent) break;
+      const sig = cardSig(a);
+      const cards = [...parent.children].filter((c) => cardSig(c) === sig && countFields(c) > 0);
+      if (cards.length < 2) continue;
+      const groups = cards.map((c) => sectionFields.filter((f) => c.contains(f.el)));
+      if (groups.reduce((n, g) => n + g.length, 0) !== sectionFields.length) continue;
+      const live = groups.filter((g) => g.length);
+      if (live.length < 2) continue;
+      const sets = live.map((g) => new Set(g.map((f) => normalize(f.label || "")).filter(Boolean)));
+      const base = sets[0];
+      if (!base.size) continue;
+      const similar = sets.every((st) => {
+        let inter = 0;
+        for (const x of st) if (base.has(x)) inter++;
+        return inter / Math.max(st.size, base.size) >= 0.6;
+      });
+      if (!similar) continue;
+      return cards.map((c, i) => ({ c, fields: groups[i] })).filter((x) => x.fields.length).map((x) => ({ container: x.c, fields: x.fields }));
+    }
+    return null;
+  }
   function buildBlocks(sectionFields, sectionContainer, categoryId) {
     const byParent = /* @__PURE__ */ new Map();
     for (const f of sectionFields) {
@@ -1365,6 +1415,12 @@
     });
     if (!best) {
       const multi = categoryId ? categoryById2(categoryId).multiple : false;
+      if (multi) {
+        const cards = splitBySiblingCards(sectionFields, sectionContainer);
+        if (cards && cards.length >= 2) {
+          return cards.map((b, i) => ({ index: i, container: b.container, fields: b.fields.slice() }));
+        }
+      }
       if (multi) {
         const flat = splitByRepeatedLabels(sectionFields);
         if (flat && flat.length >= 2) {
@@ -1586,9 +1642,33 @@
         }
       }
     }
-    return { code, labels: [...new Set(labels)], raw: text, confidence };
+    return { code, labels: [...new Set(labels)], raw: text, confidence, enumRef: enumRef || null };
   }
-  function matchOption(plan, options) {
+  function primaryValue(raw) {
+    const t = String(raw ?? "");
+    if (!/[|｜]/.test(t)) return t;
+    return t.split(/\s*[|｜]\s*/).find((x) => x.trim()) || "";
+  }
+  function valueCandidates(raw) {
+    const text = String(raw ?? "").trim();
+    if (!text) return [];
+    const out = [];
+    const push = (v) => {
+      const t = String(v || "").trim();
+      if (t && !out.includes(t)) out.push(t);
+    };
+    const alts = text.split(/\s*[|｜]\s*/).filter(Boolean);
+    for (const alt of alts) {
+      push(alt);
+      if (/\s[/／>]\s|\s*[>＞]\s*/.test(alt)) {
+        alt.split(/\s*[/／>＞]\s*/).filter(Boolean).reverse().forEach(push);
+      }
+      const parts = alt.split(/\s*[、，,；;]\s*/).filter(Boolean);
+      if (parts.length > 1) parts.forEach(push);
+    }
+    return out;
+  }
+  function matchOptionOnce(plan, options) {
     if (!plan) return { ok: false, reason: "no-value", ranked: [] };
     const labels = (plan.labels || []).map(normalize).filter(Boolean);
     const rawN = normalize(plan.raw || "");
@@ -1641,6 +1721,18 @@
     const b = normalize(optionLabel);
     if (!a || !b) return false;
     return a === b || a.includes(b) || b.includes(a);
+  }
+  function matchOption(plan, options) {
+    const first = matchOptionOnce(plan, options);
+    if (first.ok || !plan || first.reason === "no-options") return first;
+    const cands = valueCandidates(plan.raw);
+    if (cands.length <= 1) return first;
+    for (const c of cands) {
+      if (c === plan.raw) continue;
+      const r = matchOptionOnce(resolveValue(c, plan.enumRef || null), options);
+      if (r.ok) return { ...r, viaCandidate: c };
+    }
+    return first;
   }
 
   // src/binder.js
@@ -2087,12 +2179,25 @@
     }
     return null;
   }
+  function holdsRecords(section) {
+    const category = section && section.categoryId ? categoryById(section.categoryId) : null;
+    if (!category) return false;
+    const cands = category.fields.map((f) => ({ field: f, category }));
+    for (const b of section.blocks || []) {
+      for (const f of b.fields || []) {
+        try {
+          if (matchSlot(f.labelParts || [f.label], cands)) return true;
+        } catch (_) {
+        }
+      }
+    }
+    return false;
+  }
   function hasLocalAdd(section) {
     const category = section && section.categoryId ? categoryById(section.categoryId) : null;
     if (!category || !section.container) return false;
     const names = [category.name, ...category.sectionKeys || []].filter(Boolean);
-    const areas = [section.container, section.container.parentElement].filter(Boolean);
-    return areas.some((a) => candidatesIn(a).some((x) => x.kind === "text" && names.some((n) => x.text.includes(n))));
+    return candidatesIn(section.container).some((x) => x.kind === "text" && names.some((n) => x.text.includes(n)));
   }
   async function dismissDialogIfAny() {
     const dialogs = [...document.querySelectorAll('[role="dialog"],[class*="modal"],[class*="Modal"],[class*="dialog"]')].filter(
@@ -2116,7 +2221,7 @@
     await sleep(150);
     return true;
   }
-  function pickTarget(model, profile, skip) {
+  function pickTarget(model, profile, skip, only) {
     const rep = /* @__PURE__ */ new Map();
     for (const s of model.sections || []) {
       if (!s.categoryId) continue;
@@ -2125,10 +2230,14 @@
       const m = cur ? (cur.blocks || []).length : -1;
       if (!cur || n > m || n === m && !hasLocalAdd(cur) && hasLocalAdd(s)) rep.set(s.categoryId, s);
     }
+    const holders = /* @__PURE__ */ new Set();
+    for (const [id, s] of rep) if (holdsRecords(s)) holders.add(id);
     for (const section of model.sections || []) {
       const category = section.categoryId ? categoryById(section.categoryId) : null;
       if (!category || !category.multiple || category.custom) continue;
       if (rep.get(category.id) !== section) continue;
+      if (!holders.has(category.id)) continue;
+      if (only && !only.includes(category.id)) continue;
       if (skip && skip.has(category.id)) continue;
       const records = usableRecords(profile, category);
       const have = (section.blocks || []).length;
@@ -2137,9 +2246,10 @@
       if (!btn) continue;
       return { section, category, btn, need: records.length - have, have };
     }
-    const present = new Set((model.sections || []).map((s) => s.categoryId).filter(Boolean));
+    const present = holders;
     for (const category of CATEGORIES) {
       if (!category.multiple || category.custom || present.has(category.id)) continue;
+      if (only && !only.includes(category.id)) continue;
       if (skip && skip.has(category.id)) continue;
       const records = usableRecords(profile, category);
       if (!records.length) continue;
@@ -2153,8 +2263,16 @@
     const list = (next.sections || []).filter(
       (s) => s.categoryId === category.id || section.title && s.title === section.title
     );
+    if (section.container) {
+      const same = list.find((s) => s.container === section.container);
+      if (same) return same;
+    }
     let best = null;
-    for (const s of list) if (!best || (s.blocks || []).length > (best.blocks || []).length) best = s;
+    for (const s of list) {
+      const b = (s.blocks || []).length;
+      const bb = best ? (best.blocks || []).length : -1;
+      if (!best || b > bb || b === bb && fieldCountOf(s) > fieldCountOf(best)) best = s;
+    }
     return best;
   }
   function fieldCountOf(section) {
@@ -2166,13 +2284,16 @@
     let cur = model;
     let added = 0;
     const clicked = /* @__PURE__ */ new Map();
+    const firstNeed = /* @__PURE__ */ new Map();
     const stuck = /* @__PURE__ */ new Set();
+    const noGrow = /* @__PURE__ */ new Set();
     for (let round = 0; round < limit; round++) {
-      const target = pickTarget(cur, profile, stuck);
+      const target = pickTarget(cur, profile, stuck, options.onlyCategories || null);
       if (!target) break;
       const { section, category, btn, need, have } = target;
       const done = clicked.get(category.id) || 0;
-      if (done >= need) {
+      if (!firstNeed.has(category.id)) firstNeed.set(category.id, need);
+      if (done >= firstNeed.get(category.id)) {
         stuck.add(category.id);
         continue;
       }
@@ -2194,6 +2315,7 @@
         const cleaned = await dismissDialogIfAny();
         log.push(`${category.name}：「${btn.text}」点了没多出区块${cleaned ? "（已关掉弹出的对话框）" : ""}`);
         stuck.add(category.id);
+        noGrow.add(category.id);
         continue;
       }
       log.push(
@@ -2202,7 +2324,7 @@
       cur = next;
       added++;
     }
-    return { model: cur, added, log };
+    return { model: cur, added, log, noGrow: [...noGrow] };
   }
 
   // src/adapters/text.js
@@ -2219,7 +2341,7 @@
     const { field } = plan;
     const el = field.el;
     if (!el) return { status: "failed", reason: "no-el" };
-    let value = String(plan.value ?? "");
+    let value = primaryValue(plan.value ?? "");
     if (plan.kind === "number") value = numericOf(value) || value;
     if (!value.trim()) return { status: "skipped", reason: "empty-value" };
     if (field.controlKind === "RICH_TEXT") {
@@ -3237,7 +3359,7 @@
   async function commitByInput(field, panel, plan) {
     const input = editableInputOf(field);
     if (!input) return { ok: false, reason: "no-input" };
-    const text = String(plan.resolved && plan.resolved.raw || "").trim();
+    const text = primaryValue(plan.resolved && plan.resolved.raw || "").trim();
     if (!text) return { ok: false, reason: "no-text" };
     const original = String(input.value || "");
     const collect = () => {
@@ -3369,7 +3491,7 @@
     }
     let options = await waitOptions(panel);
     let m = matchOption(plan.resolved, options);
-    const raw = plan.resolved && plan.resolved.raw;
+    const raw = plan.resolved && plan.resolved.raw ? primaryValue(plan.resolved.raw) : "";
     if (raw && (!m.ok || options.length > 30)) {
       const typed = await tryTypeFilter(panel, trigger, raw);
       if (typed) {
@@ -4876,6 +4998,7 @@
   async function fillPage(profile, options = {}) {
     const bridge = options.bridge || bridge_exports;
     resetPanelMemo();
+    const inputProfile = profile;
     try {
       profile = deriveProfile(profile || {});
     } catch (_) {
@@ -4889,7 +5012,7 @@
       try {
         const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
         profile = sv.profile;
-        savedLog = sv.log;
+        savedLog = Array.isArray(options.onlyCategories) ? sv.log.filter((_, i) => options.onlyCategories.includes(sv.saved[i].categoryId)) : sv.log;
       } catch (_) {
       }
       if (options.expand !== false) {
@@ -4906,6 +5029,7 @@
       }
       if (savedLog.length) expand = { ...expand, log: [...savedLog, ...expand.log || []] };
       plans = bind(model, profile);
+      if (Array.isArray(options.onlyCategories)) plans = plans.filter((p) => options.onlyCategories.includes(p.categoryId));
       plans.sort((a, b) => (a.weak ? 1 : 0) - (b.weak ? 1 : 0));
     } catch (e) {
       return {
@@ -5011,7 +5135,7 @@
         }
         if (cur) continue;
         clearedAny = true;
-        let v = String(item.plan.value ?? "");
+        let v = primaryValue(item.plan.value ?? "");
         if (item.plan.kind === "number") v = numericOf(v) || v;
         if (!v.trim()) {
           item.dead = true;
@@ -5055,6 +5179,7 @@
       await sleep(1200);
       await recheckCleared(1);
     }
+    let commitRows = [];
     if (options.commitCards !== false) {
       try {
         const targets = [];
@@ -5068,11 +5193,31 @@
           seenBlocks.add(plan.block);
           targets.push({ section: plan.section, block: plan.block, order: i });
         });
-        results.push(...await commitCards(targets));
+        commitRows = await commitCards(targets);
+        results.push(...commitRows);
       } catch (e) {
         results.push({ section: "", label: "卡片确认", status: "failed", reason: "exception:" + String(e && e.message || e).slice(0, 80) });
       }
     }
+    const round = options.round || 0;
+    const okCats = new Set(commitRows.filter((r) => r.status === "filled").map((r) => r.categoryId));
+    const retry = (expand.noGrow || []).filter((c) => okCats.has(c));
+    if (retry.length && round < 2) {
+      try {
+        await sleep(300);
+        const next = await fillPage(inputProfile, { ...options, round: round + 1, onlyCategories: retry });
+        if (next && !next.error) {
+          results.push(...(next.results || []).filter((r) => r.reason !== "custom-no-match"));
+          expand = {
+            ...expand,
+            added: (expand.added || 0) + (next.repeat && next.repeat.added || 0),
+            log: [...expand.log || [], ...(next.repeat && next.repeat.log || []).map((l) => `第 ${round + 2} 轮 · ${l}`)]
+          };
+        }
+      } catch (_) {
+      }
+    }
+    if (round > 0) return summarize(results, model, expand);
     return summarize(withCustomDiagnostics(profile, model, results), model, expand);
   }
   function withCustomDiagnostics(profile, model, results) {

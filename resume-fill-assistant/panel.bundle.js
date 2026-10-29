@@ -427,9 +427,9 @@
     "intent.salary": "税前月薪（元），或写「面议」",
     "intent.daysPerWeek": "照网页选项写，如 5天",
     "intent.internDuration": "照网页选项写，如 6个月以上",
-    "intent.source": "如 官网 / 高校微信公众号 / 宣讲会",
+    "intent.source": "如 官网 / 高校微信公众号；可写备选：官网 | 高校微信公众号（网页没有前一个就选后一个）",
     "edu.period": "留空时按开始/结束时间自动拼接",
-    "edu.majorCategory": "如 工学 / 机械类；网页是三级选择时写全路径：学术型硕士 / 工学 / 机械工程",
+    "edu.majorCategory": "如 工学 / 机械类；三级路径照写；各站分类不同可加备选：学术型硕士 / 工学 / 机械工程 | 信息科学与技术类",
     "edu.schoolType": "985 / 211 / 双一流 / QS前100 …",
     "edu.classRank": "百分比数字，前 5% 写 5",
     "edu.rank": "如 3/120 或前 5%",
@@ -745,7 +745,7 @@
         }
       }
     }
-    return { code, labels: [...new Set(labels)], raw: text, confidence };
+    return { code, labels: [...new Set(labels)], raw: text, confidence, enumRef: enumRef || null };
   }
 
   // src/panel/library.js

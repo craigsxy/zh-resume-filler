@@ -118,30 +118,45 @@ function install(doc, w) {
     doc.querySelectorAll('.ant-calendar-picker-container').forEach(c => c.remove());
   };
 
+  // Ant Design Vue（getPopupContainer = 字段自身）：弹层第一次打开后**留在字段行里**，
+  // 关闭只是 display:none —— 真机快照里就是这样，标签采集必须能扛住它
+  const pickOption = li => {
+    const dd = li.closest('.ant-select-dropdown');
+    const sel = dd.__sel || dd.closest('.ant-form-item').querySelector('.ant-select-selection');
+    const v = li.textContent.trim();
+    sel.querySelector('.ant-select-selection__rendered').innerHTML =
+      `<div title="${v}" class="ant-select-selection-selected-value">${v}</div>`;
+    sel.setAttribute('aria-expanded', 'false');
+    dd.style.display = 'none';
+    const err = sel.closest('.field-group') && sel.closest('.field-group').querySelector('.ant-form-explain');
+    if (err) err.remove();
+  };
+
   const openSelect = sel => {
     closeDropdowns();
     const g = sel.closest('.field-group');
-    const opts = OPTIONS[labelOfGroup(g)] || ['选项A', '选项B'];
-    const id = 'aria-' + ++ariaSeq;
+    const label = labelOfGroup(g);
+    const item = sel.closest('.ant-form-item');
+    let dd = item && item.querySelector('.ant-select-dropdown');
+    if (!dd) {
+      const host = doc.createElement('div');
+      host.innerHTML = `<div class="ant-select-dropdown ant-select-dropdown--single ant-select-dropdown-placement-bottomLeft" style="position:absolute">
+        <div class="ant-select-dropdown-content"><div style="overflow:auto"><ul role="listbox" class="ant-select-dropdown-menu ant-select-dropdown-menu-root ant-select-dropdown-menu-vertical"></ul></div></div></div>`;
+      doc.body.append(host);
+      dd = host.firstElementChild;
+      dd.__sel = sel;
+    }
+    const ul = dd.querySelector('ul');
+    if (OPTIONS[label] || !ul.querySelector('li')) {
+      ul.innerHTML = (OPTIONS[label] || ['选项A', '选项B'])
+        .map(o => `<li role="option" unselectable="on" class="ant-select-dropdown-menu-item">${o}</li>`)
+        .join('');
+    }
+    const id = (dd.querySelector('[id]') && dd.querySelector('[id]').id) || 'aria-' + ++ariaSeq;
+    if (!dd.querySelector('[id]')) ul.id = id;
     sel.setAttribute('aria-controls', id);
     sel.setAttribute('aria-expanded', 'true');
-    const host = doc.createElement('div');
-    host.innerHTML = `<div class="ant-select-dropdown ant-select-dropdown--single ant-select-dropdown-placement-bottomLeft" style="position:absolute">
-      <div style="overflow:auto"><ul role="listbox" id="${id}" class="ant-select-dropdown-menu ant-select-dropdown-menu-root ant-select-dropdown-menu-vertical">
-      ${opts.map(o => `<li role="option" unselectable="on" class="ant-select-dropdown-menu-item">${o}</li>`).join('')}
-      </ul></div></div>`;
-    doc.body.append(host);
-    host.querySelectorAll('li').forEach(li =>
-      li.addEventListener('click', () => {
-        const v = li.textContent.trim();
-        sel.querySelector('.ant-select-selection__rendered').innerHTML =
-          `<div title="${v}" class="ant-select-selection-selected-value">${v}</div>`;
-        sel.setAttribute('aria-expanded', 'false');
-        host.querySelector('.ant-select-dropdown').style.display = 'none';
-        const err = g.querySelector('.ant-form-explain');
-        if (err) err.remove();
-      })
-    );
+    dd.style.display = '';
   };
 
   const openCalendar = input => {
@@ -206,6 +221,8 @@ function install(doc, w) {
 
   doc.addEventListener('click', e => {
     const t = e.target;
+    const li = t.closest && t.closest('.ant-select-dropdown li');
+    if (li) return pickOption(li);
     const sel = t.closest && t.closest('.ant-select-selection');
     if (sel && !t.closest('.ant-select-dropdown')) return openSelect(sel);
     const cal = t.closest && t.closest('.ant-calendar-picker-input');
@@ -213,6 +230,8 @@ function install(doc, w) {
     const add = t.closest && t.closest('.add_btn');
     if (add) {
       const cardDetail = add.closest('.cardDetail');
+      // 严格模式（真机常见）：当前还有没保存的编辑卡时，「添加」不响应
+      if (w.__strictAdd && cardDetail.querySelector('.section-object.edit_mode')) return;
       const tpl = templates.get(cardDetail);
       const wrap = doc.createElement('div');
       if (tpl) wrap.append(tpl.cloneNode(true));
@@ -406,6 +425,68 @@ console.log('\n[5] 简历附件：标签落在文件名框上时，就近找到�
   ok('找到了旁边的文件控件（照片不往只收文档的控件里塞）', r1.reason === 'upload-type-mismatch', JSON.stringify(r1));
   const r2 = await writeUpload({ value: photo, field: { el: doc.querySelector('.titleLine'), container: doc.querySelector('.titleLine') } });
   ok('附近没有文件控件 → not-file-input', r2.reason === 'not-file-input', JSON.stringify(r2));
+}
+
+console.log('\n[7] 真机回归（2026-10-29 诊断）：隐藏的下拉弹层留在字段行里，不能被当成标签');
+{
+  boot();
+  const model = buildFormModel(document.body);
+  const all = model.sections.flatMap(s => s.blocks.flatMap(b => b.fields));
+  const labels = all.map(f => f.label);
+  ok('快照里确实带着隐藏的下拉弹层', document.querySelectorAll('.ant-form-item .ant-select-dropdown').length >= 10);
+  ok('没有一个字段的标签是选项文字（上海 / 是否 / 3天以下3天4天5天 / 大专本科硕士博士）', !labels.some(l => /^(上海|是否|3天以下3天4天5天|大专本科硕士博士)$/.test(l)), JSON.stringify(labels));
+  for (const want of ['意向城市', '是否服从岗位调剂', '每周可出勤天数', '学历', '是否有实习经验', '是否有校内外实践活动经历', '是否有获奖经验']) {
+    ok(`取到真标签「${want}」`, all.some(f => (f.labelParts || []).includes(want) || f.label === want));
+  }
+}
+
+console.log('\n[8] 资料值的备选：多选值落单选 / 「|」备选 / 层级路径');
+{
+  const { doc } = boot();
+  const p = profileOf();
+  p.intention[0]['意向城市'] = '杭州、上海、深圳'; // 网页选项只有 上海/北京/广州
+  p.intention[0]['信息来源'] = '官网 | 高校微信公众号';
+  p.education[1]['专业类别'] = '学术型硕士 / 工学 / 机械工程 | 信息科学与技术类';
+  p.languages = [p.languages[0]];
+  p.internships = [p.internships[0]];
+  const report = await fillPage(p, { bridge });
+  const bySlot = sl => report.results.filter(r => r.slot === sl);
+  ok('意向城市：杭州没有 → 选了上海', /上海/.test(cardOf(doc, '求职意向')[0].textContent), JSON.stringify(bySlot('intent.city')));
+  ok('信息来源：官网没有 → 用备选「高校微信公众号」', bySlot('intent.source')[0]?.status === 'filled' && /高校微信公众号/.test(cardOf(doc, '个人信息')[0].textContent), JSON.stringify(bySlot('intent.source')));
+  ok('专业类别：路径对不上 → 用备选「信息科学与技术类」', /信息科学与技术类/.test(cardOf(doc, '最高学历专业类别')[0].textContent));
+  ok('文本框里绝不会写进「a | b」', ![...doc.querySelectorAll('input,textarea')].some(i => /[|｜]/.test(i.value || '')));
+}
+
+console.log('\n[9] 4 段实习 · 页面 1 张卡 → 补到 4 张（点击上限按"一开始差几段"算）');
+{
+  const { doc } = boot();
+  const p = profileOf();
+  p.languages = [p.languages[0]];
+  p.internships = [0, 1, 2, 3].map(i => ({ 单位名称: `示例公司${i + 1}`, 开始时间: `202${i}-07-01`, 结束时间: `202${i}-09-30`, 实习岗位: '实习生', 实习内容: '工作内容' }));
+  const r9 = await fillPage(p, { bridge });
+  const exp = cardOf(doc, '实习经历').find(c => c.querySelector('.add_btn'));
+  ok('一共 4 张实习卡', exp.querySelectorAll('.section-object').length === 4, String(exp.querySelectorAll('.section-object').length));
+  const v = viewText(exp);
+  ok('4 段全部确认成只读卡且各归各位', [1, 2, 3, 4].every(i => v.includes(`示例公司${i}`)) && !exp.querySelector('.edit_mode'), v);
+}
+
+console.log('\n[10] 每张卡只有 2 个字段（获奖）也能按卡片切开；站点要求先保存才能再加 → 自动第 2 轮');
+{
+  const { doc, w } = boot();
+  w.__strictAdd = true;
+  const p = profileOf();
+  p.languages = [p.languages[0]];
+  p.internships = [p.internships[0]];
+  p.awards = [
+    { 奖项: '国家奖学金', 获奖时间: '2024-10-01' },
+    { 奖项: '校级一等奖学金', 获奖时间: '2023-10-01' },
+  ];
+  const report = await fillPage(p, { bridge });
+  const award = cardOf(doc, '获奖经验').find(c => c.querySelector('.add_btn'));
+  const v = viewText(award);
+  ok('两条获奖都确认成只读卡', /国家奖学金/.test(v) && /校级一等奖学金/.test(v) && !award.querySelector('.edit_mode'), v);
+  ok('报告里有「第 2 轮」', report.repeat.log.some(l => /第 2 轮/.test(l)), JSON.stringify(report.repeat.log));
+  ok('第 2 轮没有把已保存的第 1 条再录一遍', (v.match(/国家奖学金/g) || []).length === 1, v);
 }
 
 console.log('\n[6] 新分类 + 派生字段：项目经历 / 工作经历←实习 / 年龄 / 毕业院校');

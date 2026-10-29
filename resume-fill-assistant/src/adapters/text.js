@@ -1,5 +1,6 @@
 // 文本类适配器：text / textarea / number / 富文本
 import { fire, setNativeValue, normalize, numericOf, sleep } from '../util.js';
+import { primaryValue } from '../resolver.js';
 
 const isNumeric = s => /^-?\d+(\.\d+)?$/.test(String(s ?? '').trim());
 const trimZeros = s =>
@@ -25,7 +26,7 @@ export async function writeText(plan) {
   const el = field.el;
   if (!el) return { status: 'failed', reason: 'no-el' };
 
-  let value = String(plan.value ?? '');
+  let value = primaryValue(plan.value ?? '');
   if (plan.kind === 'number') value = numericOf(value) || value;
   if (!value.trim()) return { status: 'skipped', reason: 'empty-value' };
 

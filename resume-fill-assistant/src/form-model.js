@@ -129,6 +129,33 @@ function looksLikeLatinLabel(t) {
   return !LATIN_LABEL_STOP.test(s);
 }
 
+/**
+ * 下拉 / 弹层里的文字永远不是字段标签。
+ * 真机（tupu360 · Ant Design Vue）：每个下拉的选项列表打开过一次后就以 display:none
+ * **留在字段行内部**（.ant-form-item > … > .ant-select-dropdown）。不排除的话，
+ * 「上海」「是否」「3天以下3天4天5天」会被当成标签，字段行本身因此"有标签"，
+ * 真正在行外面的「意向城市」「是否服从岗位调剂」反而采不到 —— 整页下拉全部 label-uncertain。
+ */
+const POPUP_SEL =
+  '[class*="dropdown"],[class*="Dropdown"],[class*="popover"],[class*="popup"],[class*="Popup"],[class*="picker-container"],[class*="select-menu"],[class*="tooltip"],[role="listbox"],[role="option"],[role="menu"],[role="tooltip"]';
+function isPopupText(n) {
+  if (!n || !n.closest) return false;
+  try {
+    if (n.closest(POPUP_SEL)) return true;
+    // 节点本身是"装着一串选项"的容器（<div><ul><li>是</li><li>否</li></ul></div>）
+    if (n.querySelector && n.querySelector('[role="option"],li[class*="item"],li[class*="option"]')) return true;
+  } catch (_) {}
+  return false;
+}
+/** 隐藏的节点不提供标签（被 display:none 收起的弹层、模板） */
+function hiddenNode(n) {
+  try {
+    return !isVisible(n);
+  } catch (_) {
+    return false;
+  }
+}
+
 /** <label> 或类名带 label 的节点（不含 title：区块标题也常带 title 类） */
 function isExplicitLabel(n) {
   if (!n || !n.tagName) return false;
@@ -168,6 +195,7 @@ function labelTextsOf(node, el) {
       if (n.contains(el)) continue;
       if (isOptionish(n)) continue;
       if (countFields(n) > 0) continue;
+      if (isPopupText(n) || hiddenNode(n)) continue;
       add(shortText(n, 40), true, isExplicitLabel(n));
     }
   } catch (_) {}
@@ -177,12 +205,13 @@ function labelTextsOf(node, el) {
     if (k.contains && k.contains(el)) continue;
     if (isOptionish(k)) continue;
     if (countFields(k) > 0) continue;
+    if (isPopupText(k) || hiddenNode(k)) continue;
     add(shortText(k, 24));
   }
 
   // ③ 前一个兄弟（标签独占一格时最常见）；但区块标题不能算字段标签
   const prev = node.previousElementSibling;
-  if (prev && !isOptionish(prev) && !(prev.contains && prev.contains(el)) && countFields(prev) === 0) {
+  if (prev && !isOptionish(prev) && !(prev.contains && prev.contains(el)) && countFields(prev) === 0 && !isPopupText(prev) && !hiddenNode(prev)) {
     const t = shortText(prev, 24);
     const looksHeader = /(title|header|head|caption|legend)/i.test(String(prev.className || ''));
     if (!(looksHeader && matchSection(cleanLabel(t)))) add(t);
@@ -647,6 +676,53 @@ function splitByRepeatedLabels(fields) {
   return null;
 }
 
+// 类名里的"状态"词不参与卡片签名：编辑态 / 只读态的同一种卡片要认成同类
+const STATE_TOKEN_RE = /(active|edit|mode|focus|error|selected|hover|open|checked|disabled|readonly|current|expand|collapse|^has-|^is-|^ng-|^v-)/i;
+function cardSig(el) {
+  const tokens = String(el.className || '')
+    .split(/\s+/)
+    .filter(t => t && !STATE_TOKEN_RE.test(t))
+    .sort();
+  return el.tagName + '.' + tokens.join('.');
+}
+
+/**
+ * 按"重复的同级卡片"切块：多段经历在很多站点上是一组结构相同的兄弟节点
+ * （tupu360 的 .section-object × N），每张卡只有 2 个字段（获奖时间 / 奖项）时，
+ * 标签周期切分要求每段 ≥3 个字段，切不开 → 两张卡并成一块 → 第 2 张撞槽被跳过。
+ * 判据：存在某个父节点 P，P 下 ≥2 个同签名的子节点各自含字段、合起来包住区块内**全部**字段，
+ * 且各组的标签集合基本一致（≥60% 重合）——单个字段行（每组标签都不同）不会被误当成卡片。
+ */
+function splitBySiblingCards(sectionFields, sectionContainer) {
+  if (sectionFields.length < 4) return null;
+  const first = sectionFields[0].container;
+  for (let a = first; a && a !== sectionContainer && a !== document.body; a = a.parentElement) {
+    const parent = a.parentElement;
+    if (!parent) break;
+    const sig = cardSig(a);
+    const cards = [...parent.children].filter(c => cardSig(c) === sig && countFields(c) > 0);
+    if (cards.length < 2) continue;
+    const groups = cards.map(c => sectionFields.filter(f => c.contains(f.el)));
+    if (groups.reduce((n, g) => n + g.length, 0) !== sectionFields.length) continue;
+    const live = groups.filter(g => g.length);
+    if (live.length < 2) continue;
+    const sets = live.map(g => new Set(g.map(f => normalize(f.label || '')).filter(Boolean)));
+    const base = sets[0];
+    if (!base.size) continue;
+    const similar = sets.every(st => {
+      let inter = 0;
+      for (const x of st) if (base.has(x)) inter++;
+      return inter / Math.max(st.size, base.size) >= 0.6;
+    });
+    if (!similar) continue;
+    return cards
+      .map((c, i) => ({ c, fields: groups[i] }))
+      .filter(x => x.fields.length)
+      .map(x => ({ container: x.c, fields: x.fields }));
+  }
+  return null;
+}
+
 function buildBlocks(sectionFields, sectionContainer, categoryId) {
   const byParent = new Map();
   for (const f of sectionFields) {
@@ -689,6 +765,14 @@ function buildBlocks(sectionFields, sectionContainer, categoryId) {
     // 每个父容器只有 1 个字段 → 按父容器永远切不出块 → 整段退化成 1 个 block
     // → 两段经历撞槽 → 同块去重把第 2 段整段丢掉（"两条经历只填了第一段"）。
     // 所以先不看父容器，直接拿区块内**按文档顺序**的扁平字段列表做周期切分。
+    // ⓪ 重复的同级卡片（结构信号最可靠，2 字段的卡片也能切开）
+    if (multi) {
+      const cards = splitBySiblingCards(sectionFields, sectionContainer);
+      if (cards && cards.length >= 2) {
+        return cards.map((b, i) => ({ index: i, container: b.container, fields: b.fields.slice() }));
+      }
+    }
+
     if (multi) {
       const flat = splitByRepeatedLabels(sectionFields);
       if (flat && flat.length >= 2) {

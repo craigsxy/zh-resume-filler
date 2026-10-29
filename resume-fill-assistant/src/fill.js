@@ -4,7 +4,7 @@ import { bind, customFieldsOf } from './binder.js';
 import { expandSections } from './repeat.js';
 import { writeField } from './adapters/index.js';
 import { resetPanelMemo } from './adapters/select.js';
-import { resolveValue } from './resolver.js';
+import { resolveValue, primaryValue } from './resolver.js';
 import { withoutSavedRecords, commitCards } from './cards.js';
 import { deriveProfile } from './derive.js';
 import { STRONG_KEYS, categoryById } from './schema.js';
@@ -29,6 +29,7 @@ function hasValue(v) {
 export async function fillPage(profile, options = {}) {
   const bridge = options.bridge || bridgeApi;
   resetPanelMemo();
+  const inputProfile = profile;
   // 派生字段只补空：年龄、毕业院校、起止时间、工作经历←实习经历……（derive.js）
   try {
     profile = deriveProfile(profile || {});
@@ -45,7 +46,9 @@ export async function fillPage(profile, options = {}) {
     try {
       const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
       profile = sv.profile;
-      savedLog = sv.log;
+      savedLog = Array.isArray(options.onlyCategories)
+        ? sv.log.filter((_, i) => options.onlyCategories.includes(sv.saved[i].categoryId))
+        : sv.log;
     } catch (_) {}
     // 多段经历：网页只渲染一段时先把"第 n 段"的位置点出来（点完必须重新扫描）
     if (options.expand !== false) {
@@ -64,6 +67,8 @@ export async function fillPage(profile, options = {}) {
     }
     if (savedLog.length) expand = { ...expand, log: [...savedLog, ...(expand.log || [])] };
     plans = bind(model, profile);
+    // 第 2 轮起只处理"上一轮没能加出卡片"的分类，别的字段不再重写一遍
+    if (Array.isArray(options.onlyCategories)) plans = plans.filter(p => options.onlyCategories.includes(p.categoryId));
     // v2.0.27：同一个语义槽被页面上两处抢时，先写"区块分类对得上"的那处。
     // 真机案例：页面顶部一个无标题的杂项组件里也有「职务」输入框，它文档顺序靠前、
     // 先被写并占住了 family.title；真正的家庭情况反而撞重复被跳过。
@@ -196,7 +201,7 @@ export async function fillPage(profile, options = {}) {
       if (cur) continue; // 值还在 → 本轮无事
       // 值被清空：这是"清空型站点"，记下需要延迟第二轮的信号
       clearedAny = true;
-      let v = String(item.plan.value ?? '');
+      let v = primaryValue(item.plan.value ?? '');
       if (item.plan.kind === 'number') v = numericOf(v) || v;
       if (!v.trim()) {
         item.dead = true;
@@ -245,6 +250,7 @@ export async function fillPage(profile, options = {}) {
     await recheckCleared(1);
   }
 
+  let commitRows = [];
   // 卡片式录入：这次写进了值的多段经历块，点卡片内的「确认」保存（cards.js 里有安全边界）
   if (options.commitCards !== false) {
     try {
@@ -259,12 +265,33 @@ export async function fillPage(profile, options = {}) {
         seenBlocks.add(plan.block);
         targets.push({ section: plan.section, block: plan.block, order: i });
       });
-      results.push(...(await commitCards(targets)));
+      commitRows = await commitCards(targets);
+      results.push(...commitRows);
     } catch (e) {
       results.push({ section: '', label: '卡片确认', status: 'failed', reason: 'exception:' + String((e && e.message) || e).slice(0, 80) });
     }
   }
 
+  // 卡片站点常见"先保存当前卡才能再加一张"：这一轮点「添加」没反应、但同分类已经有卡确认成功了
+  // → 重新扫描再来一轮（已保存的卡会被 withoutSavedRecords 认出来，不会重复录）。最多 3 轮。
+  const round = options.round || 0;
+  const okCats = new Set(commitRows.filter(r => r.status === 'filled').map(r => r.categoryId));
+  const retry = (expand.noGrow || []).filter(c => okCats.has(c));
+  if (retry.length && round < 2) {
+    try {
+      await sleep(300);
+      const next = await fillPage(inputProfile, { ...options, round: round + 1, onlyCategories: retry });
+      if (next && !next.error) {
+        results.push(...(next.results || []).filter(r => r.reason !== 'custom-no-match'));
+        expand = {
+          ...expand,
+          added: (expand.added || 0) + ((next.repeat && next.repeat.added) || 0),
+          log: [...(expand.log || []), ...((next.repeat && next.repeat.log) || []).map(l => `第 ${round + 2} 轮 · ${l}`)],
+        };
+      }
+    } catch (_) {}
+  }
+  if (round > 0) return summarize(results, model, expand);
   return summarize(withCustomDiagnostics(profile, model, results), model, expand);
 }
 

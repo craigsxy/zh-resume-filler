@@ -2,7 +2,7 @@
 // 硬规则：选项匹配不上或存在歧义 → 自动跳过，不点、不填、不改网页已有值
 
 import { clickEl, fire, isVisible, shortText, sleep, waitFor, setNativeValue, normalize, tagOf } from '../util.js';
-import { matchOption, sameOption } from '../resolver.js';
+import { matchOption, sameOption, primaryValue } from '../resolver.js';
 
 /** 面板没打开时，把"看起来可能是面板"的可见节点报出来，便于按站点补选择器 */
 function panelHints() {
@@ -1262,7 +1262,7 @@ function pressKey(el, key, code, keyCode, times = 1) {
 async function commitByInput(field, panel, plan) {
   const input = editableInputOf(field);
   if (!input) return { ok: false, reason: 'no-input' };
-  const text = String((plan.resolved && plan.resolved.raw) || '').trim();
+  const text = primaryValue((plan.resolved && plan.resolved.raw) || '').trim();
   if (!text) return { ok: false, reason: 'no-text' };
   const original = String(input.value || '');
   const collect = () => {
@@ -1428,7 +1428,7 @@ export async function writeSelectCustom(plan) {
 
   let options = await waitOptions(panel);
   let m = matchOption(plan.resolved, options);
-  const raw = plan.resolved && plan.resolved.raw;
+  const raw = plan.resolved && plan.resolved.raw ? primaryValue(plan.resolved.raw) : '';
 
   // ① 键入过滤：选项多/匹配不上时，先让组件把列表缩小
   if (raw && (!m.ok || options.length > 30)) {

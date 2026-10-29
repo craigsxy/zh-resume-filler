@@ -8,6 +8,7 @@
 import { clickEl, fire, isVisible, sleep } from './util.js';
 import { categoryById, CATEGORIES } from './schema.js';
 import { buildFormModel } from './form-model.js';
+import { matchSlot } from './binder.js';
 
 const MAX_ADD = 20;
 const ADD_RE = /(添加|新增|增加|再加|继续添加|\badd\b)/i;
@@ -127,12 +128,26 @@ export function findAddButton(section, category) {
   return null;
 }
 
+function holdsRecords(section) {
+  const category = section && section.categoryId ? categoryById(section.categoryId) : null;
+  if (!category) return false;
+  const cands = category.fields.map(f => ({ field: f, category }));
+  for (const b of section.blocks || []) {
+    for (const f of b.fields || []) {
+      try {
+        if (matchSlot(f.labelParts || [f.label], cands)) return true;
+      } catch (_) {}
+    }
+  }
+  return false;
+}
+
 function hasLocalAdd(section) {
   const category = section && section.categoryId ? categoryById(section.categoryId) : null;
   if (!category || !section.container) return false;
   const names = [category.name, ...(category.sectionKeys || [])].filter(Boolean);
-  const areas = [section.container, section.container.parentElement].filter(Boolean);
-  return areas.some(a => candidatesIn(a).some(x => x.kind === 'text' && names.some(n => x.text.includes(n))));
+  // 只看区块容器本身：上一级往往是整页表单，会把别的区块的「添加」也算进来，打平时就分不出谁是卡片列表
+  return candidatesIn(section.container).some(x => x.kind === 'text' && names.some(n => x.text.includes(n)));
 }
 
 /** 点"添加"如果弹出的是对话框（而不是就地加一块），收干净，别把页面留在弹窗里 */
@@ -158,7 +173,7 @@ async function dismissDialogIfAny() {
   return true;
 }
 
-function pickTarget(model, profile, skip) {
+function pickTarget(model, profile, skip, only) {
   // 同一分类可能有好几个区块：「教育背景-最高学历专业类别」（单问）+「教育背景」（卡片列表），
   // 「实习经历」（是否有实习经验…）+「实习经历」（卡片列表）。只有块最多的那个才是"重复段"区块；
   // 拿单问区块的 1 块去比资料段数，会把已经够数的卡片再点多一张出来
@@ -171,10 +186,17 @@ function pickTarget(model, profile, skip) {
     // 块数打平时，区块里自带「添加」按钮的那个才是卡片列表
     if (!cur || n > m || (n === m && !hasLocalAdd(cur) && hasLocalAdd(s))) rep.set(s.categoryId, s);
   }
+  // 只有 1 块、又不带自己的「添加」按钮的区块（「是否有获奖经验」这种单问）不是存放经历的地方：
+  // 卡片全部保存成只读后，扫描结果里只剩它，不能拿它的 1 块去当"已有 1 段"
+  // 判据：区块里至少有一个字段对得上本分类的内置字段（学校 / 公司 / 奖项…）
+  const holders = new Set();
+  for (const [id, s] of rep) if (holdsRecords(s)) holders.add(id);
   for (const section of model.sections || []) {
     const category = section.categoryId ? categoryById(section.categoryId) : null;
     if (!category || !category.multiple || category.custom) continue;
     if (rep.get(category.id) !== section) continue;
+    if (!holders.has(category.id)) continue;
+    if (only && !only.includes(category.id)) continue;
     if (skip && skip.has(category.id)) continue;
     const records = usableRecords(profile, category);
     const have = (section.blocks || []).length;
@@ -185,9 +207,10 @@ function pickTarget(model, profile, skip) {
   }
   // 页面上这个分类一个编辑块都没有（只有「添加 英语水平」按钮 + 已保存的只读卡片）：
   // 扫描结果里压根没有这个区块，上面的循环永远轮不到它。只认文案带分类名的按钮。
-  const present = new Set((model.sections || []).map(s => s.categoryId).filter(Boolean));
+  const present = holders;
   for (const category of CATEGORIES) {
     if (!category.multiple || category.custom || present.has(category.id)) continue;
+    if (only && !only.includes(category.id)) continue;
     if (skip && skip.has(category.id)) continue;
     const records = usableRecords(profile, category);
     if (!records.length) continue;
@@ -198,13 +221,28 @@ function pickTarget(model, profile, skip) {
   return null;
 }
 
-/** 重新扫描后找回同一个区块：同分类里块数最多的那个（多出来的就是刚加的） */
+/**
+ * 重新扫描后找回同一个区块。
+ * ① 区块容器节点没被框架重建 → 就是它（最准）；
+ * ② 否则同分类里 块数最多、再比字段最多 的那个。
+ * 真机（tupu360）：两个区块都叫「获奖经验」（一个只问"是否有获奖经验"，一个是卡片列表），
+ * 都只有 1 块时旧逻辑取了第一个 → 拿单问区块的 1 个字段去比卡片区块的 2 个字段 →
+ * 明明多出了一张卡也判成「点了没多出区块」。
+ */
 function relookup(next, section, category) {
   const list = (next.sections || []).filter(
     s => s.categoryId === category.id || (section.title && s.title === section.title)
   );
+  if (section.container) {
+    const same = list.find(s => s.container === section.container);
+    if (same) return same;
+  }
   let best = null;
-  for (const s of list) if (!best || (s.blocks || []).length > (best.blocks || []).length) best = s;
+  for (const s of list) {
+    const b = (s.blocks || []).length;
+    const bb = best ? (best.blocks || []).length : -1;
+    if (!best || b > bb || (b === bb && fieldCountOf(s) > fieldCountOf(best))) best = s;
+  }
   return best;
 }
 
@@ -225,16 +263,23 @@ export async function expandSections(profile, model, options = {}) {
   // 每个分类点过几次。块数一直不涨（站点把新记录塞进同一块）时，
   // `need` 不会变小，没有这个计数就会一直点下去，凭空多点出一段来。
   const clicked = new Map();
+  // 每个分类"一开始差几段"：点击上限按它算。不能用每轮重算的 need（块变多 need 就变小，
+  // 资料 4 段、页面 1 块时，点到第 3 块就会因为 已点 2 次 ≥ 还差 1 段 而提前停手）
+  const firstNeed = new Map();
   // 某个分类点不动（按钮无效 / 结构不支持）时只跳过**这一个分类**，
   // 不能直接 break —— 否则"教育经历加不上"会连带把实习经历、在校职务全部掐掉
   const stuck = new Set();
+  // 点了「添加」却没多出块的分类：常见原因是站点要求"先保存当前这张卡才能再加"，
+  // fill.js 会在卡片确认之后对这些分类再跑一轮
+  const noGrow = new Set();
 
   for (let round = 0; round < limit; round++) {
-    const target = pickTarget(cur, profile, stuck);
+    const target = pickTarget(cur, profile, stuck, options.onlyCategories || null);
     if (!target) break;
     const { section, category, btn, need, have } = target;
     const done = clicked.get(category.id) || 0;
-    if (done >= need) {
+    if (!firstNeed.has(category.id)) firstNeed.set(category.id, need);
+    if (done >= firstNeed.get(category.id)) {
       stuck.add(category.id);
       continue;
     }
@@ -264,6 +309,7 @@ export async function expandSections(profile, model, options = {}) {
       log.push(`${category.name}：「${btn.text}」点了没多出区块${cleaned ? '（已关掉弹出的对话框）' : ''}`);
       // 只跳过这个分类，其它分类（实习/在校职务/获奖…）继续
       stuck.add(category.id);
+      noGrow.add(category.id);
       continue;
     }
     log.push(
@@ -274,5 +320,5 @@ export async function expandSections(profile, model, options = {}) {
     cur = next;
     added++;
   }
-  return { model: cur, added, log };
+  return { model: cur, added, log, noGrow: [...noGrow] };
 }

@@ -60,7 +60,41 @@ export function resolveValue(raw, enumRef) {
     }
   }
 
-  return { code, labels: [...new Set(labels)], raw: text, confidence };
+  return { code, labels: [...new Set(labels)], raw: text, confidence, enumRef: enumRef || null };
+}
+
+/**
+ * 一个资料值拆成"按顺序尝试"的候选：
+ *   ① 「|」「｜」显式备选：官网 | 高校微信公众号 → 先试官网，网页没有就试高校微信公众号
+ *      （不同网申的选项不一样，同一个字段在资料里写几个备选，哪个站有哪个就选哪个）
+ *   ② 多选值落到单选控件：上海、深圳、北京 → 依次试上海 / 深圳 / 北京
+ *   ③ 层级路径：学术型硕士 / 工学 / 机械工程 → 从最细的一级往上试
+ */
+/** 往文本框里写 / 往搜索框里键入时用的值：只取第一个「|」备选（绝不把「a | b」原样写进网页） */
+export function primaryValue(raw) {
+  const t = String(raw ?? '');
+  if (!/[|｜]/.test(t)) return t;
+  return t.split(/\s*[|｜]\s*/).find(x => x.trim()) || '';
+}
+
+export function valueCandidates(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) return [];
+  const out = [];
+  const push = v => {
+    const t = String(v || '').trim();
+    if (t && !out.includes(t)) out.push(t);
+  };
+  const alts = text.split(/\s*[|｜]\s*/).filter(Boolean);
+  for (const alt of alts) {
+    push(alt);
+    if (/\s[/／>]\s|\s*[>＞]\s*/.test(alt)) {
+      alt.split(/\s*[/／>＞]\s*/).filter(Boolean).reverse().forEach(push);
+    }
+    const parts = alt.split(/\s*[、，,；;]\s*/).filter(Boolean);
+    if (parts.length > 1) parts.forEach(push);
+  }
+  return out;
 }
 
 /**
@@ -68,7 +102,7 @@ export function resolveValue(raw, enumRef) {
  * 返回 { ok, option, score, reason, ranked }
  * ok=false 时调用方必须跳过，不允许"退而求其次"
  */
-export function matchOption(plan, options) {
+function matchOptionOnce(plan, options) {
   if (!plan) return { ok: false, reason: 'no-value', ranked: [] };
   const labels = (plan.labels || []).map(normalize).filter(Boolean);
   const rawN = normalize(plan.raw || '');
@@ -140,4 +174,21 @@ export function sameOption(readback, optionLabel) {
   const b = normalize(optionLabel);
   if (!a || !b) return false;
   return a === b || a.includes(b) || b.includes(a);
+}
+
+/**
+ * 在网页选项里匹配资料值；整值匹配不上时按 valueCandidates 的顺序退到备选。
+ * 任何一个候选精确/高分命中就用它；全部失败才报 option-no-match（不会"退而求其次"乱选）。
+ */
+export function matchOption(plan, options) {
+  const first = matchOptionOnce(plan, options);
+  if (first.ok || !plan || first.reason === 'no-options') return first;
+  const cands = valueCandidates(plan.raw);
+  if (cands.length <= 1) return first;
+  for (const c of cands) {
+    if (c === plan.raw) continue;
+    const r = matchOptionOnce(resolveValue(c, plan.enumRef || null), options);
+    if (r.ok) return { ...r, viaCandidate: c };
+  }
+  return first;
 }
