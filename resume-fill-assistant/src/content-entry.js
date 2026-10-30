@@ -18,6 +18,17 @@ function aiClient(messages) {
   });
 }
 
+// 进度发给侧边栏 / 后台（后台再转给本页的悬浮按钮）。节流：填写阶段最多每 120ms 一条
+let lastSent = 0;
+function reportProgress(info) {
+  const now = Date.now();
+  if (info.stage === 'fill' && now - lastSent < 120 && info.done !== info.total) return;
+  lastSent = now;
+  try {
+    chrome.runtime.sendMessage({ type: 'FILL_PROGRESS', ...info }, () => void chrome.runtime.lastError);
+  } catch (_) {}
+}
+
 if (!window.__saaContentReady) {
   window.__saaContentReady = true;
 
@@ -27,6 +38,7 @@ if (!window.__saaContentReady) {
       try {
         const report = await fillPage(msg.profile || {}, {
           bridge,
+          onProgress: reportProgress,
           aiClient: msg.ai ? aiClient : null,
           root: msg.region ? window.__saaRegionRoot || null : null,
         });

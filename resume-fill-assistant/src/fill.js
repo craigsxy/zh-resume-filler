@@ -21,6 +21,20 @@ function blockIdOf(plan) {
   return 'b' + blockIds.get(b);
 }
 
+/** 授权 / 同意 / 隐私条款这类勾选：插件永远不替你勾，报告里单独说清楚，而不是混在"标签认不出"里 */
+const CONSENT_RE = /(同意|授权|隐私|协议|声明|承诺|知情|consent|agree|privacy)/i;
+function isConsent(plan) {
+  const f = plan.field || {};
+  const el = f.el || {};
+  const isCheck = f.controlKind === 'CHECKBOX_GROUP' || String(el.type || '').toLowerCase() === 'checkbox';
+  if (!isCheck) return false;
+  let ctx = String(plan.sectionTitle || '') + ' ' + (f.labelParts || []).join(' ');
+  try {
+    ctx += ' ' + String((f.container && f.container.textContent) || '').slice(0, 200);
+  } catch (_) {}
+  return CONSENT_RE.test(ctx);
+}
+
 function hasValue(v) {
   if (v == null) return false;
   if (typeof v === 'object') return Object.keys(v).length > 0;
@@ -29,6 +43,13 @@ function hasValue(v) {
 
 export async function fillPage(profile, options = {}) {
   const bridge = options.bridge || bridgeApi;
+  // 进度回调：侧边栏 / 悬浮按钮实时显示"正在填第几个"。回调出错不能影响填写
+  const progress = info => {
+    try {
+      if (typeof options.onProgress === 'function') options.onProgress(info);
+    } catch (_) {}
+  };
+  progress({ stage: 'scan', text: '正在识别网页表单…' });
   resetPanelMemo();
   const inputProfile = profile;
   // 派生字段只补空：年龄、毕业院校、起止时间、工作经历←实习经历……（derive.js）
@@ -38,6 +59,7 @@ export async function fillPage(profile, options = {}) {
 
   let model;
   let plans;
+  let fullProfile = profile;
   let expand = { added: 0, log: [] };
   let savedLog = [];
   try {
@@ -47,6 +69,7 @@ export async function fillPage(profile, options = {}) {
     model = buildFormModel(root);
     // v2.0.33 卡片式录入：已经以只读卡片保存在页面上的记录不再参与扩充和绑定，
     // 否则资料库 1 条 + 页面 0 个编辑块 → 再点一次「添加」→ 同一段录两遍
+    fullProfile = profile;
     try {
       const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
       profile = sv.profile;
@@ -56,6 +79,7 @@ export async function fillPage(profile, options = {}) {
     } catch (_) {}
     // 多段经历：网页只渲染一段时先把"第 n 段"的位置点出来（点完必须重新扫描）
     if (options.expand !== false) {
+      progress({ stage: 'expand', text: '正在补齐多段经历的卡片…' });
       // 扩充是"锦上添花"：点按钮涉及第三方页面，出错只能降级成"只填第一段"，
       // 绝不能因此把整次填充变成一条 error 报告
       try {
@@ -70,7 +94,7 @@ export async function fillPage(profile, options = {}) {
       }
     }
     if (savedLog.length) expand = { ...expand, log: [...savedLog, ...(expand.log || [])] };
-    plans = bind(model, profile);
+    plans = bind(model, profile, { fullProfile });
     // 第 2 轮起只处理"上一轮没能加出卡片"的分类，别的字段不再重写一遍
     if (Array.isArray(options.onlyCategories)) plans = plans.filter(p => options.onlyCategories.includes(p.categoryId));
     // v2.0.27：同一个语义槽被页面上两处抢时，先写"区块分类对得上"的那处。
@@ -101,6 +125,8 @@ export async function fillPage(profile, options = {}) {
   // 收尾复核用：记录"普通文本框写成功"的 plan 和它对应的报告行
   const filledTexts = [];
 
+  const writable = plans.filter(p => p.slot && !p.dup && p.hasRecord && hasValue(p.value)).length;
+  let step = 0;
   for (const plan of plans) {
     const base = {
       section: plan.sectionTitle || '',
@@ -114,6 +140,7 @@ export async function fillPage(profile, options = {}) {
       container: tagOf(plan.field.container),
     };
 
+    if (plan.dup && plan.kind === 'upload') continue; // 上传按钮旁的文件名框：同一个上传，不必报
     if (plan.dup) {
       // 块没切干净导致的"撞槽"：必须显式报出来，否则用户只看到"这段没填"
       results.push({
@@ -123,6 +150,10 @@ export async function fillPage(profile, options = {}) {
         parts: ((plan.field && plan.field.labelParts) || []).slice(0, 4),
         path: pathOf(plan.field.el),
       });
+      continue;
+    }
+    if (!plan.slot && isConsent(plan)) {
+      results.push({ ...base, label: (plan.field.labelParts || [])[0] || '授权勾选', status: 'skipped', reason: 'consent-manual' });
       continue;
     }
     if (!plan.slot) {
@@ -155,6 +186,8 @@ export async function fillPage(profile, options = {}) {
     seen.add(key);
     seen.add(slotKey);
 
+    step++;
+    progress({ stage: 'fill', done: step, total: writable, text: `正在填写 ${step}/${writable}：${plan.sectionTitle ? plan.sectionTitle + ' · ' : ''}${plan.label || plan.field.label || ''}` });
     let res;
     try {
       plan.resolved = plan.kind === 'upload' ? null : resolveValue(plan.value, plan.enumRef || null);
@@ -163,6 +196,7 @@ export async function fillPage(profile, options = {}) {
       res = { status: 'failed', reason: 'exception:' + String((e && e.message) || e).slice(0, 80) };
     }
     const pushed = { ...base, ...res, resolvedCode: (plan.resolved && plan.resolved.code) || '' };
+    if (plan.derived === 'has-records') pushed.note = pushed.note || 'derived-yesno';
     results.push(pushed);
     planResults.set(plan, pushed);
     // 跳过/失败的字段补上祖先链，方便按站点校准选择器
@@ -177,6 +211,7 @@ export async function fillPage(profile, options = {}) {
   // AI 善后（v2.2.0）：规则认不出的标签、对不上的选项交给模型（见 ai.js；Key 只在 background）
   let aiStat = null;
   if (typeof options.aiClient === 'function') {
+    progress({ stage: 'ai', text: 'AI 正在善后规则没认出的字段…' });
     try {
       aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient });
     } catch (e) {
@@ -269,6 +304,7 @@ export async function fillPage(profile, options = {}) {
   let commitRows = [];
   // 卡片式录入：这次写进了值的多段经历块，点卡片内的「确认」保存（cards.js 里有安全边界）
   if (options.commitCards !== false) {
+    progress({ stage: 'commit', text: '正在点各张卡片的「确认」…' });
     try {
       const targets = [];
       const seenBlocks = new Set();
@@ -307,8 +343,11 @@ export async function fillPage(profile, options = {}) {
       }
     } catch (_) {}
   }
-  if (round > 0) return { ...summarize(results, model, expand), ai: aiStat };
-  return { ...summarize(withCustomDiagnostics(profile, model, results), model, expand), ai: aiStat };
+  progress({ stage: 'done', text: '填写完成' });
+  // AI 没开时也告诉调用方"有几处本可以交给 AI"——侧边栏据此提示去开启
+  const aiHint = typeof options.aiClient === 'function' ? null : results.filter(r => r.reason === 'label-uncertain' || r.reason === 'option-no-match').length;
+  if (round > 0) return { ...summarize(results, model, expand), ai: aiStat, aiOff: aiHint };
+  return { ...summarize(withCustomDiagnostics(profile, model, results), model, expand), ai: aiStat, aiOff: aiHint };
 }
 
 /**

@@ -206,7 +206,7 @@ function install(doc, w) {
       if (valueOf(g)) continue;
       bad++;
       const ctl = g.querySelector('.ant-form-item-control');
-      if (ctl) ctl.insertAdjacentHTML('beforeend', `<div class="ant-form-explain">请填写${labelOfGroup(g)}</div>`);
+      if (ctl) ctl.insertAdjacentHTML('beforeend', `<div class="ant-form-explain">必填字段不能为空</div>`);
     }
     if (bad) return;
     const view = doc.createElement('div');
@@ -397,7 +397,7 @@ console.log('\n[3] 必填没填全：确认被站点拦下 → 报告如实说�
   const commits = report.results.filter(r => r.controlKind === 'CARD_COMMIT');
   const blocked = commits.find(r => r.status === 'failed');
   ok('第 1 段确认失败，原因 card-commit-blocked', blocked && blocked.reason === 'card-commit-blocked', JSON.stringify(commits));
-  ok('带上了站点的校验提示', blocked && /请填写/.test(blocked.note || ''), blocked && blocked.note);
+  ok('点名缺哪几个必填项（站点只说「必填字段不能为空」）', blocked && /入学日期.*毕业日期/.test(blocked.note || '') && !/必填字段不能为空/.test(blocked.note), blocked && blocked.note);
   const eduCard = cardOf(doc, '教育背景').find(c => !/最高学历/.test(c.querySelector('.section-title').textContent));
   ok('那张卡仍在编辑态（用户能接着补）', eduCard.querySelectorAll('.section-object.edit_mode').length === 1);
 }
@@ -487,6 +487,44 @@ console.log('\n[10] 每张卡只有 2 个字段（获奖）也能按卡片切开
   ok('两条获奖都确认成只读卡', /国家奖学金/.test(v) && /校级一等奖学金/.test(v) && !award.querySelector('.edit_mode'), v);
   ok('报告里有「第 2 轮」', report.repeat.log.some(l => /第 2 轮/.test(l)), JSON.stringify(report.repeat.log));
   ok('第 2 轮没有把已保存的第 1 条再录一遍', (v.match(/国家奖学金/g) || []).length === 1, v);
+}
+
+console.log('\n[11] 真机回归（2026-10-30 诊断）：教育已全部保存时，单问区块照常取值；是否有X经历自动答；授权单列');
+{
+  const { doc } = boot();
+  const p = profileOf();
+  p.languages = [p.languages[0]];
+  p.internships = [p.internships[0]];
+  p.personal[0].__custom = []; // 不定义「是否有校内外实践活动经历 / 是否有获奖经验」自定义字段
+  await fillPage(p, { bridge }); // 第一遍：教育两段确认成只读卡
+  const hi = cardOf(doc, '最高学历专业类别')[0];
+  hi.querySelector('.ant-select-selection__rendered').innerHTML = '<div class="ant-select-selection__placeholder">请选择</div>';
+  const report = await fillPage(p, { bridge }); // 第二遍：教育记录都被认成"已保存"
+  const row = report.results.find(r => r.slot === 'edu.majorCategory' && /最高学历/.test(r.section));
+  ok('最高学历专业类别照常填上（不再报「无对应记录」）', row && row.status === 'filled' && /信息科学与技术类/.test(hi.textContent), JSON.stringify(row && { s: row.status, r: row.reason }));
+  ok('「是否有校内外实践活动经历」按资料推断为「否」', /否/.test(cardOf(doc, '实践活动经验')[0].textContent), cardOf(doc, '实践活动经验')[0].textContent.replace(/\s+/g, ''));
+  const awardQ = cardOf(doc, '获奖经验').find(c => !c.querySelector('.add_btn'));
+  ok('「是否有获奖经验」按资料推断为「是」', /是/.test(awardQ.textContent.replace(/是否有获奖经验/, '')));
+  ok('推断出的答案在报告里有标注', report.results.some(r => r.note === 'derived-yesno' && r.status === 'filled'));
+  const consent = report.results.filter(r => r.reason === 'consent-manual');
+  ok('授权勾选单列为「需要你自己勾」，不再混进标签认不出', consent.length === 3 && !report.results.some(r => r.reason === 'label-uncertain' && /授权/.test(r.section)), JSON.stringify(report.results.filter(r => /授权/.test(r.section)).map(r => r.reason)));
+  ok('简历附件旁的文件名框不再报重复', !report.results.some(r => r.reason === 'duplicate-slot' && r.slot === 'personal.resume'));
+}
+
+console.log('\n[12] 填写进度回调');
+{
+  boot();
+  const p = profileOf();
+  p.languages = [p.languages[0]];
+  p.internships = [p.internships[0]];
+  const seen = [];
+  await fillPage(p, { bridge, onProgress: x => seen.push(x) });
+  const stages = [...new Set(seen.map(x => x.stage))];
+  ok('依次报告 识别 → 扩充 → 填写 → 确认 → 完成', ['scan', 'expand', 'fill', 'commit', 'done'].every(st => stages.includes(st)), stages.join(','));
+  const fills = seen.filter(x => x.stage === 'fill');
+  ok('填写阶段带「第几个 / 共几个」和字段名', fills.length > 5 && fills.every(x => x.done <= x.total) && /正在填写 1\//.test(fills[0].text), fills[0] && fills[0].text);
+  const r2 = await fillPage(p, { bridge, onProgress: () => { throw new Error('boom'); } });
+  ok('进度回调出错不影响填写', r2 && r2.found);
 }
 
 console.log('\n[6] 新分类 + 派生字段：项目经历 / 工作经历←实习 / 年龄 / 毕业院校');

@@ -1996,7 +1996,44 @@
     });
     return best;
   }
-  function bind(model, profile) {
+  var HAS_QUESTIONS = [
+    [/^是否有(校内外|校内|校外)?(社会)?实践(活动)?(经历|经验)$/, ["practice", "positions"]],
+    [/^是否有(获奖|奖项|荣誉|获奖情况)(经历|经验|记录)?$/, ["awards"]],
+    [/^是否有实习(经历|经验)$/, ["internships"]],
+    [/^是否有(项目|科研项目|科研)(经历|经验)$/, ["projects"]],
+    [/^是否有(校园|学生干部|社团|学生工作)(经历|经验)$/, ["positions"]],
+    [/^是否有(资格)?证书$/, ["certificates"]],
+    [/^是否有专利$/, ["patents"]],
+    [/^是否有(论文|论文发表|学术论文)$/, ["publications"]]
+  ];
+  function derivedYesNo(parts, fullProfile) {
+    for (const raw of parts || []) {
+      const n = normalize(raw);
+      for (const [re, cats] of HAS_QUESTIONS) {
+        if (!re.test(n)) continue;
+        const any = cats.some(
+          (id) => (fullProfile && fullProfile[id] || []).some(
+            (r) => r && typeof r === "object" && Object.entries(r).some(([k, v]) => !k.startsWith("__") && v != null && typeof v !== "object" && String(v).trim())
+          )
+        );
+        return { value: any ? "是" : "否", cats };
+      }
+    }
+    return null;
+  }
+  function sectionHoldsRecords(section, category, candidates) {
+    const strong = STRONG_KEYS[category.id] || [];
+    if (!strong.length) return true;
+    for (const b of section.blocks || []) {
+      for (const f of b.fields || []) {
+        const m = matchSlot(f.labelParts, candidates);
+        if (m && strong.includes(m.field.slot)) return true;
+      }
+    }
+    return false;
+  }
+  function bind(model, profile, opts = {}) {
+    const full = opts.fullProfile || profile;
     const plans = [];
     const sections = (model && Array.isArray(model.sections) ? model.sections : []).filter(
       (s) => s && Array.isArray(s.blocks)
@@ -2006,9 +2043,10 @@
     for (const section of sections) {
       const categoryId = section.categoryId || inferCategory(section);
       const category = categoryId ? categoryById(categoryId) : null;
-      const records = category ? profile[category.id] || [] : [];
       const builtinCandidates = category ? category.fields.map((f) => ({ field: f, category })) : ALL_FIELDS;
       const candidates = [...builtinCandidates, ...customs];
+      const holder = category ? sectionHoldsRecords(section, category, builtinCandidates) : true;
+      const records = category ? (holder ? profile : full)[category.id] || [] : [];
       const assign = alignBlocks(section.blocks, records, category || { id: "" }, candidates);
       for (const block of section.blocks) {
         let ri = assign.has(block.index) ? assign.get(block.index) : null;
@@ -2024,6 +2062,30 @@
         for (const field of block.fields || []) {
           let m = matchSlot(field.labelParts, candidates);
           if (!m && category) m = matchSlot(field.labelParts, ALL_FIELDS);
+          if (!m) {
+            const yn = derivedYesNo(field.labelParts, full);
+            if (yn) {
+              plans.push({
+                field,
+                sectionTitle: section.title || "",
+                categoryId: category && category.id || "",
+                blockIndex: block.index,
+                recordIndex: null,
+                slot: `derived:has:${yn.cats.join("+")}`,
+                label: field.label,
+                kind: "enum",
+                precision: null,
+                enumRef: "yesNo",
+                value: yn.value,
+                matchScore: 1,
+                hasRecord: true,
+                derived: "has-records",
+                section,
+                block
+              });
+              continue;
+            }
+          }
           const meta = m ? m.field : null;
           const owner = meta ? m.category : category;
           const dedupeKey = meta && owner ? `${owner.id}:${meta.slot}` : null;
@@ -2065,7 +2127,7 @@
               rawValue = recordValue(record, meta);
               hasRecord = true;
             } else {
-              const recs = profile[owner.id] || [];
+              const recs = full[owner.id] || [];
               const hit = recs.find((r) => r && String(recordValue(r, meta) ?? "").trim()) || recs[0] || null;
               rawValue = hit ? recordValue(hit, meta) : "";
               hasRecord = !!hit;
@@ -4746,9 +4808,28 @@
     const hasCancel = btns.some((b) => CANCEL_RE.test(btnText(b)));
     return hasCancel ? commit : null;
   }
+  function labelOfError(errEl, root) {
+    let n = errEl.parentElement;
+    for (let d = 0; n && n !== root && d < 7; d++, n = n.parentElement) {
+      const lab = n.querySelector && n.querySelector('label,[class*="label"],[class*="Label"]');
+      if (lab && !lab.contains(errEl)) {
+        const t = String(lab.textContent || "").replace(/[*＊:：\s]/g, "").trim();
+        if (t && t.length <= 30) return t;
+      }
+    }
+    return "";
+  }
   function errorsIn(root) {
     if (!root || !root.querySelectorAll) return [];
-    return [...root.querySelectorAll(ERROR_SEL)].filter((e) => isVisible(e)).map((e) => String(e.textContent || "").replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 5);
+    const out = [];
+    for (const e of root.querySelectorAll(ERROR_SEL)) {
+      if (!isVisible(e)) continue;
+      const msg = String(e.textContent || "").replace(/\s+/g, " ").trim();
+      if (!msg) continue;
+      const lab = labelOfError(e, root);
+      out.push(lab ? /(必填|不能为空|请填写|请选择|请输入)/.test(msg) ? lab : `${lab}：${msg}` : msg);
+    }
+    return [...new Set(out)].slice(0, 8);
   }
   function committed(root, btn) {
     if (!root.isConnected) return true;
@@ -4788,7 +4869,8 @@
           ...base,
           status: "failed",
           reason: "card-commit-blocked",
-          note: errs.length ? errs.join("；") : "点了确认但卡片没收起（可能有必填项没填）"
+          missing: errs,
+          note: errs.length ? "网站要求必填、你的资料里没有：" + errs.join("、") : "点了确认但卡片没收起（可能有必填项没填）"
         });
       }
     }
@@ -5220,6 +5302,19 @@
     if (!blockIds.has(b)) blockIds.set(b, ++blockSeq);
     return "b" + blockIds.get(b);
   }
+  var CONSENT_RE = /(同意|授权|隐私|协议|声明|承诺|知情|consent|agree|privacy)/i;
+  function isConsent(plan) {
+    const f = plan.field || {};
+    const el = f.el || {};
+    const isCheck = f.controlKind === "CHECKBOX_GROUP" || String(el.type || "").toLowerCase() === "checkbox";
+    if (!isCheck) return false;
+    let ctx = String(plan.sectionTitle || "") + " " + (f.labelParts || []).join(" ");
+    try {
+      ctx += " " + String(f.container && f.container.textContent || "").slice(0, 200);
+    } catch (_) {
+    }
+    return CONSENT_RE.test(ctx);
+  }
   function hasValue(v) {
     if (v == null) return false;
     if (typeof v === "object") return Object.keys(v).length > 0;
@@ -5227,6 +5322,13 @@
   }
   async function fillPage(profile, options = {}) {
     const bridge = options.bridge || bridge_exports;
+    const progress = (info) => {
+      try {
+        if (typeof options.onProgress === "function") options.onProgress(info);
+      } catch (_) {
+      }
+    };
+    progress({ stage: "scan", text: "正在识别网页表单…" });
     resetPanelMemo();
     const inputProfile = profile;
     try {
@@ -5235,12 +5337,14 @@
     }
     let model;
     let plans;
+    let fullProfile = profile;
     let expand = { added: 0, log: [] };
     let savedLog = [];
     try {
       const root = options.root && options.root.isConnected ? options.root : void 0;
       if (root) options = { ...options, expand: false };
       model = buildFormModel(root);
+      fullProfile = profile;
       try {
         const sv = withoutSavedRecords(profile, model, STRONG_KEYS);
         profile = sv.profile;
@@ -5248,6 +5352,7 @@
       } catch (_) {
       }
       if (options.expand !== false) {
+        progress({ stage: "expand", text: "正在补齐多段经历的卡片…" });
         try {
           const ex = await expandSections(profile, model, options);
           if (ex && ex.model) {
@@ -5260,7 +5365,7 @@
         }
       }
       if (savedLog.length) expand = { ...expand, log: [...savedLog, ...expand.log || []] };
-      plans = bind(model, profile);
+      plans = bind(model, profile, { fullProfile });
       if (Array.isArray(options.onlyCategories)) plans = plans.filter((p) => options.onlyCategories.includes(p.categoryId));
       plans.sort((a, b) => (a.weak ? 1 : 0) - (b.weak ? 1 : 0));
     } catch (e) {
@@ -5282,6 +5387,8 @@
     const planResults = /* @__PURE__ */ new Map();
     const seen = /* @__PURE__ */ new Set();
     const filledTexts = [];
+    const writable = plans.filter((p) => p.slot && !p.dup && p.hasRecord && hasValue(p.value)).length;
+    let step = 0;
     for (const plan of plans) {
       const base = {
         section: plan.sectionTitle || "",
@@ -5294,6 +5401,7 @@
         controlKind: plan.field.controlKind,
         container: tagOf(plan.field.container)
       };
+      if (plan.dup && plan.kind === "upload") continue;
       if (plan.dup) {
         results.push({
           ...base,
@@ -5302,6 +5410,10 @@
           parts: (plan.field && plan.field.labelParts || []).slice(0, 4),
           path: pathOf(plan.field.el)
         });
+        continue;
+      }
+      if (!plan.slot && isConsent(plan)) {
+        results.push({ ...base, label: (plan.field.labelParts || [])[0] || "授权勾选", status: "skipped", reason: "consent-manual" });
         continue;
       }
       if (!plan.slot) {
@@ -5330,6 +5442,8 @@
       if (seen.has(key) || plan.weak && seen.has(slotKey)) continue;
       seen.add(key);
       seen.add(slotKey);
+      step++;
+      progress({ stage: "fill", done: step, total: writable, text: `正在填写 ${step}/${writable}：${plan.sectionTitle ? plan.sectionTitle + " · " : ""}${plan.label || plan.field.label || ""}` });
       let res;
       try {
         plan.resolved = plan.kind === "upload" ? null : resolveValue(plan.value, plan.enumRef || null);
@@ -5338,6 +5452,7 @@
         res = { status: "failed", reason: "exception:" + String(e && e.message || e).slice(0, 80) };
       }
       const pushed = { ...base, ...res, resolvedCode: plan.resolved && plan.resolved.code || "" };
+      if (plan.derived === "has-records") pushed.note = pushed.note || "derived-yesno";
       results.push(pushed);
       planResults.set(plan, pushed);
       if (res.status !== "filled") results[results.length - 1].path = pathOf(plan.field.el);
@@ -5348,6 +5463,7 @@
     }
     let aiStat = null;
     if (typeof options.aiClient === "function") {
+      progress({ stage: "ai", text: "AI 正在善后规则没认出的字段…" });
       try {
         aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient });
       } catch (e) {
@@ -5423,6 +5539,7 @@
     }
     let commitRows = [];
     if (options.commitCards !== false) {
+      progress({ stage: "commit", text: "正在点各张卡片的「确认」…" });
       try {
         const targets = [];
         const seenBlocks = /* @__PURE__ */ new Set();
@@ -5459,8 +5576,10 @@
       } catch (_) {
       }
     }
-    if (round > 0) return { ...summarize(results, model, expand), ai: aiStat };
-    return { ...summarize(withCustomDiagnostics(profile, model, results), model, expand), ai: aiStat };
+    progress({ stage: "done", text: "填写完成" });
+    const aiHint = typeof options.aiClient === "function" ? null : results.filter((r) => r.reason === "label-uncertain" || r.reason === "option-no-match").length;
+    if (round > 0) return { ...summarize(results, model, expand), ai: aiStat, aiOff: aiHint };
+    return { ...summarize(withCustomDiagnostics(profile, model, results), model, expand), ai: aiStat, aiOff: aiHint };
   }
   function withCustomDiagnostics(profile, model, results) {
     let defined;
@@ -5539,6 +5658,16 @@
       }
     });
   }
+  var lastSent = 0;
+  function reportProgress(info) {
+    const now = Date.now();
+    if (info.stage === "fill" && now - lastSent < 120 && info.done !== info.total) return;
+    lastSent = now;
+    try {
+      chrome.runtime.sendMessage({ type: "FILL_PROGRESS", ...info }, () => void chrome.runtime.lastError);
+    } catch (_) {
+    }
+  }
   if (!window.__saaContentReady) {
     window.__saaContentReady = true;
     chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -5547,6 +5676,7 @@
         try {
           const report = await fillPage(msg.profile || {}, {
             bridge: bridge_exports,
+            onProgress: reportProgress,
             aiClient: msg.ai ? aiClient : null,
             root: msg.region ? window.__saaRegionRoot || null : null
           });

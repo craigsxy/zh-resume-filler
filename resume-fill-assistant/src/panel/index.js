@@ -350,7 +350,11 @@ function wireLibrary() {
 
 function renderAiBadge() {
   const b = $('#ai-badge');
-  if (b) b.textContent = aiSettings.enabled && aiSettings.apiKey ? 'AI' : '';
+  if (b) b.textContent = aiSettings.enabled && aiSettings.apiKey ? 'AI 开' : 'AI 关';
+}
+
+export function aiReady() {
+  return !!(aiSettings.enabled && aiSettings.apiKey);
 }
 
 function saveAi() {
@@ -382,7 +386,16 @@ function wireSettings() {
       saveAi();
     };
   };
-  bind('#ai-key', 'apiKey', '');
+  $('#ai-key').oninput = () => {
+    aiSettings.apiKey = $('#ai-key').value.trim();
+    // 粘贴了 Key 就自动开启（以前要再手动勾一次，容易漏掉 → 以为开了其实没开）
+    if (aiSettings.apiKey && !aiSettings.enabled) {
+      aiSettings.enabled = true;
+      $('#ai-enabled').checked = true;
+      showNotice('已填 Key，AI 辅助已自动开启。可以点「测试连接」确认一下。');
+    }
+    saveAi();
+  };
   bind('#ai-model', 'model', AI_DEFAULTS.model);
   bind('#ai-base', 'baseUrl', AI_DEFAULTS.baseUrl);
   $('#float-enabled').onchange = () => {
@@ -1319,7 +1332,8 @@ const REASON_TEXT = {
   'readback-mismatch': '写入后回读不一致',
   'no-el': '找不到控件',
   'no-photo': '资料库未上传照片/简历附件',
-  'card-commit-blocked': '点了卡片里的「确认」，但网页没保存（多半是有必填项没填，见说明）',
+  'card-commit-blocked': '点了卡片里的「确认」，但网页没保存',
+  'consent-manual': '授权 / 同意类勾选：插件不替你勾，请自己确认后勾选',
   'not-file-input': '网页不是文件上传控件',
   'upload-type-mismatch': '网页上传控件不收这种文件类型（照片 / 简历附件放错了位置），未上传',
   'control-kind-mismatch': '控件类型与字段不匹配，未写入',
@@ -1387,6 +1401,21 @@ function renderReport(report) {
     body.append(line);
   }
 
+  if (!report.ai && report.aiOff > 0) {
+    const line = document.createElement('p');
+    line.className = 'ai-off';
+    line.textContent = `AI 未开启：这次有 ${report.aiOff} 处规则没处理好（标签认不出 / 选项对不上），开启 AI 辅助可以自动善后。`;
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.textContent = '去设置开启';
+    go.onclick = () => {
+      activeId = SETTINGS_VIEW;
+      renderNav();
+      renderSection();
+    };
+    line.append(go);
+    body.append(line);
+  }
   if (report.ai) {
     const line = document.createElement('p');
     line.className = 'report-sections';
@@ -1437,12 +1466,18 @@ function renderReport(report) {
     const downgraded = r.downgraded === 'month' ? '（网页只到年月，已按年月写入）' : '';
     // 站点把 6.5 强行格式化成 6.50000
     const padded = r.note === 'site-padded' ? '（网页把数值补成了固定小数位，已按你的原值回写）' : '';
+    const why =
+      r.reason === 'card-commit-blocked' && r.note
+        ? `（${r.note}）`
+        : r.note === 'derived-yesno'
+          ? '（按你资料里有没有这类记录推断）'
+          : '';
     const cells = [
       r.section ? `${r.section}${r.block > 0 ? ' #' + (r.block + 1) : ''}` : '未识别区块',
       r.label || '（未取到标签）',
       r.value,
       (STATUS_TEXT[statusKey] || r.status) + (r.ai && r.status === 'filled' ? '（AI）' : ''),
-      [reason + downgraded + padded + extra + attempts + parts + hints + panelText, r.readback && r.status !== 'filled' ? `回读：${r.readback}` : '']
+      [reason + why + downgraded + padded + extra + attempts + parts + hints + panelText, r.readback && r.status !== 'filled' ? `回读：${r.readback}` : '']
         .filter(Boolean)
         .join('；'),
     ];
@@ -1512,7 +1547,9 @@ $('#fill-page').onclick = async () => {
       } catch (_) {}
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.bundle.js'] });
     };
-    const ai = !!(aiSettings.enabled && aiSettings.apiKey);
+    const ai = aiReady();
+    btn.textContent = '填写中…';
+    showFillProgress({ stage: 'scan', text: ai ? '正在识别网页表单…（AI 辅助已开启）' : '正在识别网页表单…' });
     const send = () => chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM', profile, ai });
 
     await inject();
@@ -1546,9 +1583,29 @@ $('#fill-page').onclick = async () => {
       showNotice(`填写失败：${msg}`, true);
     }
   } finally {
+    btn.textContent = '填写当前网页';
+    showFillProgress({ stage: 'done', text: '填写完成' });
     btn.disabled = false;
   }
 };
+
+// 填写进度：内容脚本每填一个字段报一次
+let progressTimer = null;
+export function showFillProgress(info) {
+  const box = $('#fill-progress');
+  if (!box || !info) return;
+  clearTimeout(progressTimer);
+  box.hidden = false;
+  box.querySelector('.fp-text').textContent = info.text || '';
+  const pct = info.stage === 'done' ? 100 : info.total ? Math.round((info.done / info.total) * 100) : { scan: 5, expand: 12, ai: 92, commit: 96 }[info.stage] || 0;
+  box.querySelector('.progress-fill').style.width = pct + '%';
+  if (info.stage === 'done') progressTimer = setTimeout(() => (box.hidden = true), 1500);
+}
+try {
+  chrome.runtime.onMessage.addListener(msg => {
+    if (msg && msg.type === 'FILL_PROGRESS') showFillProgress(msg);
+  });
+} catch (_) {}
 
 // 悬浮按钮在网页上填完后，报告写进 storage：侧边栏开着就立刻显示，求职进度也同步刷新
 try {

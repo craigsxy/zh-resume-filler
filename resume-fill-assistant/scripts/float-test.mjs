@@ -21,9 +21,20 @@ function page(html, ui = {}) {
   // jsdom 没有布局：给每个元素一个非零尺寸，让"可见"判断成立
   w.HTMLElement.prototype.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 40, right: 100, bottom: 40 });
   const sent = [];
+  const listeners = [];
   w.chrome = {
     storage: { local: { get: (k, cb) => cb({ uiSettings: ui }) } },
-    runtime: { sendMessage: (msg, cb) => { sent.push(msg); cb && cb({ found: true, filled: 3, skipped: 1, failed: 0 }); }, lastError: null },
+    runtime: {
+      sendMessage: (msg, cb) => {
+        sent.push(msg);
+        // 填写过程中后台会转来进度
+        listeners.forEach(fn => fn({ type: 'FLOAT_PROGRESS', stage: 'fill', done: 2, total: 4, text: '正在填写 2/4：个人信息 · 姓名' }));
+        w.__lastProgress = w.document.getElementById('saa-float-host')?.shadowRoot.getElementById('toast').textContent;
+        cb && cb({ found: true, filled: 3, skipped: 1, failed: 0 });
+      },
+      onMessage: { addListener: fn => listeners.push(fn) },
+      lastError: null,
+    },
   };
   w.eval(FLOAT);
   return { w, doc: w.document, sent };
@@ -57,6 +68,7 @@ console.log('\n[2] 一键填写 / 选区填写 发给后台的消息');
   const root = doc.getElementById('saa-float-host').shadowRoot;
   root.getElementById('fill').click();
   ok('一键填写 → FLOAT_FILL（整页）', sent[0] && sent[0].type === 'FLOAT_FILL' && !sent[0].region);
+  ok('填写中显示进度（第几个 / 共几个 + 百分比）', /正在填写 2\/4.*50%/.test(w.__lastProgress || ''), w.__lastProgress);
   ok('填完弹出结果提示', /已填 3 个/.test(root.getElementById('toast').textContent));
   root.getElementById('region').click();
   const target = doc.getElementById('c');

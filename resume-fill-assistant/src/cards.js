@@ -199,13 +199,31 @@ function findCommitIn(root) {
   return hasCancel ? commit : null;
 }
 
+/** 校验提示 → 它属于哪个字段（往上找到含 label 的那层，取标签文字） */
+function labelOfError(errEl, root) {
+  let n = errEl.parentElement;
+  for (let d = 0; n && n !== root && d < 7; d++, n = n.parentElement) {
+    const lab = n.querySelector && n.querySelector('label,[class*="label"],[class*="Label"]');
+    if (lab && !lab.contains(errEl)) {
+      const t = String(lab.textContent || '').replace(/[*＊:：\s]/g, '').trim();
+      if (t && t.length <= 30) return t;
+    }
+  }
+  return '';
+}
+
 function errorsIn(root) {
   if (!root || !root.querySelectorAll) return [];
-  return [...root.querySelectorAll(ERROR_SEL)]
-    .filter(e => isVisible(e))
-    .map(e => String(e.textContent || '').replace(/\s+/g, ' ').trim())
-    .filter(Boolean)
-    .slice(0, 5);
+  const out = [];
+  for (const e of root.querySelectorAll(ERROR_SEL)) {
+    if (!isVisible(e)) continue;
+    const msg = String(e.textContent || '').replace(/\s+/g, ' ').trim();
+    if (!msg) continue;
+    const lab = labelOfError(e, root);
+    // 站点提示常是千篇一律的「必填字段不能为空」：有字段名就只报字段名
+    out.push(lab ? (/(必填|不能为空|请填写|请选择|请输入)/.test(msg) ? lab : `${lab}：${msg}`) : msg);
+  }
+  return [...new Set(out)].slice(0, 8);
 }
 
 /** 卡片是否已经"收起成只读"：根被移除、或里面不再有可编辑控件、或确认按钮消失 */
@@ -253,7 +271,8 @@ export async function commitCards(targets) {
         ...base,
         status: 'failed',
         reason: 'card-commit-blocked',
-        note: errs.length ? errs.join('；') : '点了确认但卡片没收起（可能有必填项没填）',
+        missing: errs,
+        note: errs.length ? '网站要求必填、你的资料里没有：' + errs.join('、') : '点了确认但卡片没收起（可能有必填项没填）',
       });
     }
   }

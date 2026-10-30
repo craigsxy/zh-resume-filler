@@ -108,6 +108,12 @@ async function logApplication(tab, report) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (!message) return false;
+  if (message.type === 'FILL_PROGRESS') {
+    // 转给同一页的悬浮按钮（内容脚本之间收不到彼此的 runtime 消息）
+    const tab = sender && sender.tab;
+    if (tab && tab.id) chrome.tabs.sendMessage(tab.id, { ...message, type: 'FLOAT_PROGRESS' }).catch(() => {});
+    return false;
+  }
   if (message.type === 'FLOAT_FILL') {
     const tab = sender && sender.tab;
     if (!tab || !tab.id) return false;

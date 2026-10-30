@@ -148,6 +148,12 @@ footer{border-top:1px solid var(--line);padding:10px 18px;color:#978d81;font-siz
 .report-sections{margin:0 0 8px;font-size:10px;color:#9a8d7a;line-height:1.7;word-break:break-all}
 .report-reasons{margin:0 0 10px;font-size:10px;color:#a5762a;line-height:1.7;word-break:break-all}
 
+/* 填写进度 */
+.fill-progress{margin:10px 14px 0;background:#fbf6ec;border:1px solid #eadfcd;border-radius:10px;padding:8px 12px}
+.fp-text{font-size:11px;color:#6c6256;margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-off{margin:0 0 8px;font-size:11px;color:#8a6420;background:#fdf3dd;border-radius:8px;padding:6px 9px}
+.ai-off button{border:0;background:transparent;color:var(--accent-dark);text-decoration:underline;cursor:pointer;font-size:11px}
+
 /* 简历管理条 */
 .library-bar{margin:12px 14px 0;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
 .library-row{display:flex;gap:8px;align-items:center}

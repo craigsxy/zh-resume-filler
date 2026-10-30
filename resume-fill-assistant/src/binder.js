@@ -358,7 +358,57 @@ function highestDegreeIndex(records) {
   return best;
 }
 
-export function bind(model, profile) {
+/**
+ * 「是否有 X 经历 / 经验」这类问题：资料里没有专门的字段，但答案可以从资料推出来——
+ * 对应分类里有记录就是「是」，没有就是「否」。用户自己定义了同名自定义字段时以自定义为准（先匹配到）。
+ * 只认问题主体**正好**是某个分类的问法；「是否有医药类公司实习经验」这种带限定的不推断。
+ */
+const HAS_QUESTIONS = [
+  [/^是否有(校内外|校内|校外)?(社会)?实践(活动)?(经历|经验)$/, ['practice', 'positions']],
+  [/^是否有(获奖|奖项|荣誉|获奖情况)(经历|经验|记录)?$/, ['awards']],
+  [/^是否有实习(经历|经验)$/, ['internships']],
+  [/^是否有(项目|科研项目|科研)(经历|经验)$/, ['projects']],
+  [/^是否有(校园|学生干部|社团|学生工作)(经历|经验)$/, ['positions']],
+  [/^是否有(资格)?证书$/, ['certificates']],
+  [/^是否有专利$/, ['patents']],
+  [/^是否有(论文|论文发表|学术论文)$/, ['publications']],
+];
+function derivedYesNo(parts, fullProfile) {
+  for (const raw of parts || []) {
+    const n = normalize(raw);
+    for (const [re, cats] of HAS_QUESTIONS) {
+      if (!re.test(n)) continue;
+      const any = cats.some(id =>
+        ((fullProfile && fullProfile[id]) || []).some(
+          r => r && typeof r === 'object' && Object.entries(r).some(([k, v]) => !k.startsWith('__') && v != null && typeof v !== 'object' && String(v).trim())
+        )
+      );
+      return { value: any ? '是' : '否', cats };
+    }
+  }
+  return null;
+}
+
+/** 区块里有没有本分类"强键"字段（学校 / 公司 / 奖项…）：有才是放经历卡片的区块 */
+function sectionHoldsRecords(section, category, candidates) {
+  const strong = STRONG_KEYS[category.id] || [];
+  if (!strong.length) return true;
+  for (const b of section.blocks || []) {
+    for (const f of b.fields || []) {
+      const m = matchSlot(f.labelParts, candidates);
+      if (m && strong.includes(m.field.slot)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * @param opts.fullProfile 未剔除"已保存记录"的完整资料。剔除只该影响"经历卡片"区块的对齐；
+ *   单问区块（「教育背景-最高学历专业类别」「是否有实习经验」）照常从完整资料取值——
+ *   真机：两段教育都已保存 → 资料里教育被剔空 → 最高学历专业类别报「无对应记录」。
+ */
+export function bind(model, profile, opts = {}) {
+  const full = opts.fullProfile || profile;
   const plans = [];
   const sections = (model && Array.isArray(model.sections) ? model.sections : []).filter(
     s => s && Array.isArray(s.blocks)
@@ -371,11 +421,12 @@ export function bind(model, profile) {
   for (const section of sections) {
     const categoryId = section.categoryId || inferCategory(section);
     const category = categoryId ? categoryById(categoryId) : null;
-    const records = category ? profile[category.id] || [] : [];
     // 区块分类不明时退到全局词表；此时 matchSlot 内部会做"全局唯一"校验，歧义一律返回 null
     const builtinCandidates = category ? category.fields.map(f => ({ field: f, category })) : ALL_FIELDS;
     // 分类内的候选排前面（同分时先命中），自定义字段垫在后面兜底
     const candidates = [...builtinCandidates, ...customs];
+    const holder = category ? sectionHoldsRecords(section, category, builtinCandidates) : true;
+    const records = category ? (holder ? profile : full)[category.id] || [] : [];
     const assign = alignBlocks(section.blocks, records, category || { id: '' }, candidates);
 
     for (const block of section.blocks) {
@@ -398,6 +449,31 @@ export function bind(model, profile) {
         // （"学历/学位"常被放在"基本信息"里，但"姓名"全局不唯一，仍然不会被误配）
         if (!m && category) m = matchSlot(field.labelParts, ALL_FIELDS);
 
+        // 「是否有 X 经历」：资料里没这个字段，但能按分类有无记录推出来
+        if (!m) {
+          const yn = derivedYesNo(field.labelParts, full);
+          if (yn) {
+            plans.push({
+              field,
+              sectionTitle: section.title || '',
+              categoryId: (category && category.id) || '',
+              blockIndex: block.index,
+              recordIndex: null,
+              slot: `derived:has:${yn.cats.join('+')}`,
+              label: field.label,
+              kind: 'enum',
+              precision: null,
+              enumRef: 'yesNo',
+              value: yn.value,
+              matchScore: 1,
+              hasRecord: true,
+              derived: 'has-records',
+              section,
+              block,
+            });
+            continue;
+          }
+        }
         const meta = m ? m.field : null;
         // 命中字段真正属于哪个分类（区块分类不明时以此为准）
         const owner = meta ? m.category : category;
@@ -451,7 +527,7 @@ export function bind(model, profile) {
             hasRecord = true;
           } else {
             // 跨分类取值：优先取该分类里第一条填了这个字段的记录
-            const recs = profile[owner.id] || [];
+            const recs = full[owner.id] || [];
             const hit = recs.find(r => r && String(recordValue(r, meta) ?? '').trim()) || recs[0] || null;
             rawValue = hit ? recordValue(hit, meta) : '';
             hasRecord = !!hit;

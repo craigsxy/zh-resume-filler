@@ -72,9 +72,22 @@
     document.documentElement.append(host);
   }
 
+  // 后台转来的填写进度：在提示框里显示"正在填写 12/40：实习经历 · 单位名称"
+  try {
+    chrome.runtime.onMessage.addListener(msg => {
+      if (!msg || msg.type !== 'FLOAT_PROGRESS' || !host || !running) return;
+      if (msg.stage === 'done') return;
+      const pct = msg.total ? ` (${Math.round((msg.done / msg.total) * 100)}%)` : '';
+      host.__toast(String(msg.text || '') + pct, 60000);
+    });
+  } catch (_) {}
+  let running = false;
+
   function run(region) {
+    running = true;
     host.__toast(region ? '正在填写选中的区域…' : '正在填写本页…', 60000);
     chrome.runtime.sendMessage({ type: 'FLOAT_FILL', region }, res => {
+      running = false;
       const err = chrome.runtime.lastError;
       if (err || !res) return host.__toast('填写失败：' + ((err && err.message) || '没有响应'));
       if (res.error) return host.__toast('填写中断：' + res.error);

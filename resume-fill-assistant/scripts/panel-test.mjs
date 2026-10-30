@@ -506,5 +506,24 @@ console.log('\n[19] 求职进度：手动添加 / 8 档状态 / 日程 / 按状�
   ok('再点取消筛选', rows().length === 2);
 }
 
+console.log('\n[20] AI 设置：粘贴 Key 自动开启；填写进度条');
+{
+  click(document.querySelector('#settings-nav'));
+  ok('设置页能打开', !document.querySelector('#settings-view').hidden);
+  ok('没 Key 时导航显示「AI 关」', document.querySelector('#ai-badge').textContent === 'AI 关');
+  const key = document.querySelector('#ai-key');
+  key.value = 'sk-test-123';
+  fireInput(key);
+  ok('粘贴 Key 自动勾上「开启 AI 辅助」', document.querySelector('#ai-enabled').checked && panelMod.aiReady());
+  ok('导航显示「AI 开」', document.querySelector('#ai-badge').textContent === 'AI 开');
+  await tick(20);
+  ok('设置存进本地（不在简历资料里）', stored.aiSettings && stored.aiSettings.enabled && stored.aiSettings.apiKey === 'sk-test-123' && !JSON.stringify(stored.resumeProfile).includes('sk-test'));
+  panelMod.showFillProgress({ stage: 'fill', done: 3, total: 12, text: '正在填写 3/12：个人信息 · 姓名' });
+  const fp = document.querySelector('#fill-progress');
+  ok('进度条显示「第几个 / 共几个」', !fp.hidden && /3\/12/.test(fp.textContent) && fp.querySelector('.progress-fill').style.width === '25%');
+  panelMod.showFillProgress({ stage: 'done', text: '填写完成' });
+  ok('完成时进度到 100%', fp.querySelector('.progress-fill').style.width === '100%');
+}
+
 console.log(`\n结果：${pass} 通过 / ${fail} 失败\n`);
 process.exit(fail ? 1 : 0);

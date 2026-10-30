@@ -1,6 +1,6 @@
 {
   "name": "resume-fill-assistant",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "private": true,
   "type": "module",
   "description": "简历一键填充助手（浏览器扩展）：按语义槽绑定字段，按控件类型适配写入",
