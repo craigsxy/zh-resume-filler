@@ -5119,11 +5119,14 @@
       { role: "user", content: user }
     ];
   }
-  function eligibleForLabel(plan, rowOf) {
+  function eligibleForLabel(plan, rowOf, force) {
     if (!plan || plan.dup) return false;
     if (plan.slot) {
       const row = rowOf && rowOf.get(plan);
-      if (!row || row.reason !== "option-no-match" || !(plan.matchScore < 1)) return false;
+      if (!row) return false;
+      const emptyHere = row.status === "empty" || row.reason === "no-record";
+      if (!(force && emptyHere) && (row.reason !== "option-no-match" || !(plan.matchScore < 1))) return false;
+      if (String(plan.slot).startsWith("derived:")) return false;
     }
     const ck = plan.field && plan.field.controlKind;
     if (ck === "CHECKBOX_GROUP" || ck === "UPLOAD") return false;
@@ -5191,7 +5194,7 @@
       ai: note
     });
     try {
-      const todo = plans.filter((p) => eligibleForLabel(p, rowOf));
+      const todo = plans.filter((p) => eligibleForLabel(p, rowOf, ctx.force));
       const catalog = slotCatalog(profile);
       if (todo.length && catalog.length) {
         stat.calls++;
@@ -5488,11 +5491,15 @@
         continue;
       }
       if (!plan.hasRecord) {
-        results.push({ ...base, status: "skipped", reason: "no-record" });
+        const row = { ...base, status: "skipped", reason: "no-record" };
+        results.push(row);
+        planResults.set(plan, row);
         continue;
       }
       if (!hasValue(plan.value)) {
-        results.push({ ...base, status: "empty" });
+        const row = { ...base, status: "empty" };
+        results.push(row);
+        planResults.set(plan, row);
         continue;
       }
       const key = `${blockIdOf(plan)}:${plan.categoryId}:${plan.slot}`;
@@ -5523,7 +5530,7 @@
     if (typeof options.aiClient === "function") {
       progress({ stage: "ai", text: "AI 正在善后规则没认出的字段…" });
       try {
-        aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient });
+        aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient, force: !!options.aiForce });
       } catch (e) {
         aiStat = { mapped: 0, options: 0, calls: 0, error: String(e && e.message || e).slice(0, 120) };
       }
@@ -5767,6 +5774,7 @@
             bridge: bridge_exports,
             onProgress: reportProgress,
             aiClient: msg.ai ? aiClient : null,
+            aiForce: !!msg.aiForce,
             root: msg.region ? window.__saaRegionRoot || null : null
           });
           sendResponse(report);

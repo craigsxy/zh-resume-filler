@@ -370,6 +370,7 @@ function renderSettings() {
   $('#ai-model').value = aiSettings.model || '';
   $('#ai-base').value = aiSettings.baseUrl || '';
   $('#float-enabled').checked = uiSettings.floatButton !== false;
+  $('#ai-always').checked = !!aiSettings.always;
 }
 
 function wireSettings() {
@@ -398,6 +399,11 @@ function wireSettings() {
   };
   bind('#ai-model', 'model', AI_DEFAULTS.model);
   bind('#ai-base', 'baseUrl', AI_DEFAULTS.baseUrl);
+  $('#ai-always').onchange = () => {
+    aiSettings.always = $('#ai-always').checked;
+    if (aiSettings.always && !aiSettings.apiKey) showNotice('先填 API Key，AI 复核才会生效。', true);
+    saveAi();
+  };
   $('#float-enabled').onchange = () => {
     uiSettings.floatButton = $('#float-enabled').checked;
     chrome.storage.local.set({ [UI_KEY]: uiSettings });
@@ -1528,6 +1534,19 @@ try {
   if (v) $('#panel-version').textContent = `仅保存在此设备 · v${v}`;
 } catch (_) {}
 
+let forceAiOnce = false;
+$('#report-ai').onclick = () => {
+  if (!aiReady()) {
+    showNotice('AI 还没开启：先去「设置」填 API Key。', true);
+    activeId = SETTINGS_VIEW;
+    renderNav();
+    renderSection();
+    return;
+  }
+  forceAiOnce = true;
+  $('#fill-page').click();
+};
+
 $('#fill-page').onclick = async () => {
   const btn = $('#fill-page');
   btn.disabled = true;
@@ -1548,9 +1567,11 @@ $('#fill-page').onclick = async () => {
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.bundle.js'] });
     };
     const ai = aiReady();
+    const aiForce = ai && (forceAiOnce || !!aiSettings.always);
+    forceAiOnce = false;
     btn.textContent = '填写中…';
     showFillProgress({ stage: 'scan', text: ai ? '正在识别网页表单…（AI 辅助已开启）' : '正在识别网页表单…' });
-    const send = () => chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM', profile, ai });
+    const send = () => chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM', profile, ai, aiForce });
 
     await inject();
     let result;

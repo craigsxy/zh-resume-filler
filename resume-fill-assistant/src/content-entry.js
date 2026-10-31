@@ -40,6 +40,7 @@ if (!window.__saaContentReady) {
           bridge,
           onProgress: reportProgress,
           aiClient: msg.ai ? aiClient : null,
+          aiForce: !!msg.aiForce,
           root: msg.region ? window.__saaRegionRoot || null : null,
         });
         sendResponse(report);

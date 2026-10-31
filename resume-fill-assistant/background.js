@@ -75,7 +75,8 @@ async function fillTab(tab, region) {
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['main-world.js'], world: 'MAIN' });
   } catch (_) {}
   await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['content.bundle.js'] });
-  const report = await chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM', profile, ai, region: !!region });
+  const aiForce = !!(ai && data[AI_KEY].always);
+  const report = await chrome.tabs.sendMessage(tab.id, { type: 'FILL_FORM', profile, ai, aiForce, region: !!region });
   // 侧边栏开着时会监听到这一条并显示完整报告；关着也留到下次打开
   await chrome.storage.local.set({ lastFillReport: { report, url: tab.url, title: tab.title, at: Date.now() } });
   if (report && report.found && !report.error) await logApplication(tab, report);

@@ -172,11 +172,15 @@ export async function fillPage(profile, options = {}) {
       continue;
     }
     if (!plan.hasRecord) {
-      results.push({ ...base, status: 'skipped', reason: 'no-record' });
+      const row = { ...base, status: 'skipped', reason: 'no-record' };
+      results.push(row);
+      planResults.set(plan, row);
       continue;
     }
     if (!hasValue(plan.value)) {
-      results.push({ ...base, status: 'empty' });
+      const row = { ...base, status: 'empty' };
+      results.push(row);
+      planResults.set(plan, row);
       continue;
     }
     // 同分类可能出现在两个区块里（「教育背景-最高学历专业类别」+「教育背景」卡片），
@@ -215,7 +219,7 @@ export async function fillPage(profile, options = {}) {
   if (typeof options.aiClient === 'function') {
     progress({ stage: 'ai', text: 'AI 正在善后规则没认出的字段…' });
     try {
-      aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient });
+      aiStat = await aiAssist({ plans, results, rowOf: planResults, profile, writeField, deps: { bridge }, aiClient: options.aiClient, force: !!options.aiForce });
     } catch (e) {
       aiStat = { mapped: 0, options: 0, calls: 0, error: String((e && e.message) || e).slice(0, 120) };
     }

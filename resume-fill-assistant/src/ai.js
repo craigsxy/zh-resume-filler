@@ -124,11 +124,15 @@ export function buildOptionRequest(items) {
  *     （「本科及以上学历所学门类」因为含"学历"被配到学历层次）。
  * 授权勾选、上传、页面头像这类不送。
  */
-function eligibleForLabel(plan, rowOf) {
+function eligibleForLabel(plan, rowOf, force) {
   if (!plan || plan.dup) return false;
   if (plan.slot) {
     const row = rowOf && rowOf.get(plan);
-    if (!row || row.reason !== 'option-no-match' || !(plan.matchScore < 1)) return false;
+    if (!row) return false;
+    // 强制复核：规则认出了字段、但资料里这个字段没值（empty / no-record）→ 让 AI 看看资料里有没有同义字段可用
+    const emptyHere = row.status === 'empty' || row.reason === 'no-record';
+    if (!(force && emptyHere) && (row.reason !== 'option-no-match' || !(plan.matchScore < 1))) return false;
+    if (String(plan.slot).startsWith('derived:')) return false;
   }
   const ck = plan.field && plan.field.controlKind;
   if (ck === 'CHECKBOX_GROUP' || ck === 'UPLOAD') return false;
@@ -207,7 +211,7 @@ export async function aiAssist(ctx) {
 
   // ① 标签映射
   try {
-    const todo = plans.filter(p => eligibleForLabel(p, rowOf));
+    const todo = plans.filter(p => eligibleForLabel(p, rowOf, ctx.force));
     const catalog = slotCatalog(profile);
     if (todo.length && catalog.length) {
       stat.calls++;

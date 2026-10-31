@@ -48,6 +48,7 @@
     <div class="report-head">
       <strong>填充报告</strong>
       <div class="report-actions">
+        <button id="report-ai" class="link-button" type="button">让 AI 再看一遍</button>
         <button id="report-feedback" class="link-button" type="button">反馈缺少字段</button>
         <button id="report-copy" class="link-button" type="button">复制诊断</button>
         <button id="report-close" class="link-button" type="button">收起</button>
@@ -89,6 +90,7 @@
           <div class="record-header"><span class="record-title">AI 辅助识别（可选）</span></div>
           <p class="section-description">规则认不出的字段、对不上的下拉选项，交给大模型善后。用你自己的 API Key（OpenRouter 或任何 OpenAI 兼容接口），费用很低：一次填写通常只有 1~2 次调用。</p>
           <label class="switch-row"><input id="ai-enabled" type="checkbox"> 开启 AI 辅助</label>
+          <label class="switch-row"><input id="ai-always" type="checkbox"> 每次都让 AI 复核（规则填不上、或资料里没值的字段，都交给 AI 再找一遍）</label>
           <div class="field-grid">
             <div class="field wide"><label for="ai-key">API Key</label><input id="ai-key" type="password" autocomplete="off" placeholder="sk-or-v1-…（只存在本机浏览器）"></div>
             <div class="field"><label for="ai-model">模型</label><input id="ai-model" type="text" placeholder="deepseek/deepseek-v4.1-flash"></div>
