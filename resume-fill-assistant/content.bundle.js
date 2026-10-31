@@ -5742,20 +5742,45 @@
       }
     }
     if (!round) {
+      const savedCount = () => {
+        const fm = buildFormModel(options.root && options.root.isConnected ? options.root : void 0);
+        const sv = withoutSavedRecords(deriveProfile(inputProfile || {}), fm, STRONG_KEYS);
+        const by = {};
+        for (const x of sv.saved) by[x.categoryId] = (by[x.categoryId] || 0) + 1;
+        return by;
+      };
+      const hasAdd = (c) => {
+        try {
+          return !!findAddButton({ container: null, blocks: [] }, c);
+        } catch (_) {
+          return false;
+        }
+      };
       try {
-        const finalModel = buildFormModel(options.root && options.root.isConnected ? options.root : void 0);
-        const sv = withoutSavedRecords(deriveProfile(inputProfile || {}), finalModel, STRONG_KEYS);
-        const savedBy = {};
-        for (const x of sv.saved) savedBy[x.categoryId] = (savedBy[x.categoryId] || 0) + 1;
+        const by0 = savedCount();
+        const untouched = CATEGORIES.filter((c) => c.multiple && !c.custom && !by0[c.id] && usableRecords(inputProfile || {}, c).length && hasAdd(c)).map((c) => c.id);
+        if (untouched.length) {
+          progress({ stage: "expand", text: `补填还没动过的：${untouched.map((id) => categoryById(id).name).join("、")}…` });
+          const next = await fillPage(inputProfile, { ...options, round: 1, retryDepth: 0, onlyCategories: untouched });
+          if (next && !next.error) {
+            results.push(...(next.results || []).filter((r) => r.reason !== "custom-no-match" && r.reason !== "cards-incomplete"));
+            expand = { ...expand, added: (expand.added || 0) + (next.repeat && next.repeat.added || 0), log: [...expand.log || [], ...(next.repeat && next.repeat.log || []).map((l) => `补跑 · ${l}`)] };
+          }
+        }
+      } catch (_) {
+      }
+      try {
+        const savedBy = savedCount();
         for (const c of CATEGORIES) {
-          if (!c.multiple || c.custom || !savedBy[c.id]) continue;
+          if (!c.multiple || c.custom || !(savedBy[c.id] || hasAdd(c))) continue;
           const want = usableRecords(inputProfile || {}, c).length;
-          if (savedBy[c.id] < want) {
+          const got = savedBy[c.id] || 0;
+          if (want && got < want) {
             const blocked = results.filter((r) => r.reason === "card-commit-blocked" && r.categoryId === c.id).map((r) => r.note).filter(Boolean);
             results.unshift({
               section: c.name,
               categoryId: c.id,
-              label: `${c.name}：资料 ${want} 段，网页上已保存 ${savedBy[c.id]} 段，还差 ${want - savedBy[c.id]} 段`,
+              label: `${c.name}：资料 ${want} 段，网页上已保存 ${got} 段，还差 ${want - got} 段`,
               value: "",
               status: "failed",
               reason: "cards-incomplete",

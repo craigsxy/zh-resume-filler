@@ -1,7 +1,7 @@
 // L5 编排：扫描 → 绑定 → 逐字段写入 → 汇总报告
 import { buildFormModel } from './form-model.js';
 import { bind, customFieldsOf } from './binder.js';
-import { expandSections, usableRecords } from './repeat.js';
+import { expandSections, usableRecords, findAddButton } from './repeat.js';
 import { writeField } from './adapters/index.js';
 import { resetPanelMemo } from './adapters/select.js';
 import { resolveValue, primaryValue } from './resolver.js';
@@ -445,20 +445,47 @@ export async function fillPage(profile, options = {}) {
   }
   // 收尾核对（只在最外层做一次）：资料里的段数是否都已保存在网页上，没填完就在报告顶部写清楚还差几段
   if (!round) {
+    const savedCount = () => {
+      const fm = buildFormModel(options.root && options.root.isConnected ? options.root : undefined);
+      const sv = withoutSavedRecords(deriveProfile(inputProfile || {}), fm, STRONG_KEYS);
+      const by = {};
+      for (const x of sv.saved) by[x.categoryId] = (by[x.categoryId] || 0) + 1;
+      return by;
+    };
+    const hasAdd = c => {
+      try {
+        return !!findAddButton({ container: null, blocks: [] }, c);
+      } catch (_) {
+        return false;
+      }
+    };
+    // 兜底补跑：资料里有记录、网页上有这个分类的「添加」按钮、却一段都没保存的分类（真机：获奖经历整块没动），
+    // 专门为它们再跑一轮（添加 → 填写 → 确认，一张一张来）
     try {
-      const finalModel = buildFormModel(options.root && options.root.isConnected ? options.root : undefined);
-      const sv = withoutSavedRecords(deriveProfile(inputProfile || {}), finalModel, STRONG_KEYS);
-      const savedBy = {};
-      for (const x of sv.saved) savedBy[x.categoryId] = (savedBy[x.categoryId] || 0) + 1;
+      const by0 = savedCount();
+      const untouched = CATEGORIES.filter(c => c.multiple && !c.custom && !by0[c.id] && usableRecords(inputProfile || {}, c).length && hasAdd(c)).map(c => c.id);
+      if (untouched.length) {
+        progress({ stage: 'expand', text: `补填还没动过的：${untouched.map(id => categoryById(id).name).join('、')}…` });
+        const next = await fillPage(inputProfile, { ...options, round: 1, retryDepth: 0, onlyCategories: untouched });
+        if (next && !next.error) {
+          results.push(...(next.results || []).filter(r => r.reason !== 'custom-no-match' && r.reason !== 'cards-incomplete'));
+          expand = { ...expand, added: (expand.added || 0) + ((next.repeat && next.repeat.added) || 0), log: [...(expand.log || []), ...((next.repeat && next.repeat.log) || []).map(l => `补跑 · ${l}`)] };
+        }
+      }
+    } catch (_) {}
+    try {
+      const savedBy = savedCount();
       for (const c of CATEGORIES) {
-        if (!c.multiple || c.custom || !savedBy[c.id]) continue; // 只核对"这页确实是卡片式、存过卡"的分类
+        // 核对范围：这页存过卡的分类，或者网页上有它的「添加」按钮的分类（一段都没存上也要报）
+        if (!c.multiple || c.custom || !(savedBy[c.id] || hasAdd(c))) continue;
         const want = usableRecords(inputProfile || {}, c).length;
-        if (savedBy[c.id] < want) {
+        const got = savedBy[c.id] || 0;
+        if (want && got < want) {
           const blocked = results.filter(r => r.reason === 'card-commit-blocked' && r.categoryId === c.id).map(r => r.note).filter(Boolean);
           results.unshift({
             section: c.name,
             categoryId: c.id,
-            label: `${c.name}：资料 ${want} 段，网页上已保存 ${savedBy[c.id]} 段，还差 ${want - savedBy[c.id]} 段`,
+            label: `${c.name}：资料 ${want} 段，网页上已保存 ${got} 段，还差 ${want - got} 段`,
             value: '',
             status: 'failed',
             reason: 'cards-incomplete',
