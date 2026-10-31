@@ -5701,7 +5701,11 @@
       return cat && cat.multiple && !cat.custom;
     });
     const depth = options.retryDepth || 0;
-    if (retry.length && depth < 12 && !appeared) {
+    const totalRecords = CATEGORIES.filter((c) => c.multiple && !c.custom).reduce(
+      (n, c) => n + (inputProfile && inputProfile[c.id] || []).filter((r) => r && typeof r === "object" && Object.entries(r).some(([k, v]) => !k.startsWith("__") && v != null && typeof v !== "object" && String(v).trim())).length,
+      0
+    );
+    if (retry.length && depth < totalRecords + 2 && !appeared) {
       try {
         await sleep(300);
         const next = await fillPage(inputProfile, { ...options, round: round + 1, retryDepth: depth + 1, onlyCategories: retry });
@@ -5712,6 +5716,31 @@
             added: (expand.added || 0) + (next.repeat && next.repeat.added || 0),
             log: [...expand.log || [], ...(next.repeat && next.repeat.log || []).map((l) => `第 ${round + 2} 轮 · ${l}`)]
           };
+        }
+      } catch (_) {
+      }
+    }
+    if (!round) {
+      try {
+        const finalModel = buildFormModel(options.root && options.root.isConnected ? options.root : void 0);
+        const sv = withoutSavedRecords(deriveProfile(inputProfile || {}), finalModel, STRONG_KEYS);
+        const savedBy = {};
+        for (const x of sv.saved) savedBy[x.categoryId] = (savedBy[x.categoryId] || 0) + 1;
+        for (const c of CATEGORIES) {
+          if (!c.multiple || c.custom || !savedBy[c.id]) continue;
+          const want = (inputProfile && inputProfile[c.id] || []).filter((r) => r && typeof r === "object" && Object.entries(r).some(([k, v]) => !k.startsWith("__") && v != null && typeof v !== "object" && String(v).trim())).length;
+          if (savedBy[c.id] < want) {
+            const blocked = results.filter((r) => r.reason === "card-commit-blocked" && r.categoryId === c.id).map((r) => r.note).filter(Boolean);
+            results.unshift({
+              section: c.name,
+              categoryId: c.id,
+              label: `${c.name}：资料 ${want} 段，网页上已保存 ${savedBy[c.id]} 段，还差 ${want - savedBy[c.id]} 段`,
+              value: "",
+              status: "failed",
+              reason: "cards-incomplete",
+              note: blocked[0] || "某一轮一张卡都没保存成功，插件停下了"
+            });
+          }
         }
       } catch (_) {
       }

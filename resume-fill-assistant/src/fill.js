@@ -8,7 +8,7 @@ import { resolveValue, primaryValue } from './resolver.js';
 import { withoutSavedRecords, commitCards } from './cards.js';
 import { deriveProfile } from './derive.js';
 import { aiAssist } from './ai.js';
-import { STRONG_KEYS, categoryById } from './schema.js';
+import { STRONG_KEYS, CATEGORIES, categoryById } from './schema.js';
 import * as bridgeApi from './bridge.js';
 import { sleep, tagOf, pathOf, setNativeValue, fire, numericOf } from './util.js';
 
@@ -421,9 +421,15 @@ export async function fillPage(profile, options = {}) {
     const cat = categoryById(c);
     return cat && cat.multiple && !cat.custom;
   });
-  // 一轮只能保存一张卡的站点（先保存才能再添加），4 段实习就要 4 轮：只要这一轮确实保存成功了，就继续，最多 12 轮
+  // 一轮只能保存一张卡的站点（先保存才能再添加）：资料有几段就做几轮。
+  // 停止条件 = 资料里的段数都处理完（下一轮没有剩下的就什么也不做），或者某一轮一张都没保存成功。
+  // 上限按资料总段数 + 2 算（只防站点异常时死循环），不是写死的轮数——18 段实习就能跑 18 轮。
   const depth = options.retryDepth || 0;
-  if (retry.length && depth < 12 && !appeared) {
+  const totalRecords = CATEGORIES.filter(c => c.multiple && !c.custom).reduce(
+    (n, c) => n + ((inputProfile && inputProfile[c.id]) || []).filter(r => r && typeof r === 'object' && Object.entries(r).some(([k, v]) => !k.startsWith('__') && v != null && typeof v !== 'object' && String(v).trim())).length,
+    0
+  );
+  if (retry.length && depth < totalRecords + 2 && !appeared) {
     try {
       await sleep(300);
       const next = await fillPage(inputProfile, { ...options, round: round + 1, retryDepth: depth + 1, onlyCategories: retry });
@@ -434,6 +440,31 @@ export async function fillPage(profile, options = {}) {
           added: (expand.added || 0) + ((next.repeat && next.repeat.added) || 0),
           log: [...(expand.log || []), ...((next.repeat && next.repeat.log) || []).map(l => `第 ${round + 2} 轮 · ${l}`)],
         };
+      }
+    } catch (_) {}
+  }
+  // 收尾核对（只在最外层做一次）：资料里的段数是否都已保存在网页上，没填完就在报告顶部写清楚还差几段
+  if (!round) {
+    try {
+      const finalModel = buildFormModel(options.root && options.root.isConnected ? options.root : undefined);
+      const sv = withoutSavedRecords(deriveProfile(inputProfile || {}), finalModel, STRONG_KEYS);
+      const savedBy = {};
+      for (const x of sv.saved) savedBy[x.categoryId] = (savedBy[x.categoryId] || 0) + 1;
+      for (const c of CATEGORIES) {
+        if (!c.multiple || c.custom || !savedBy[c.id]) continue; // 只核对"这页确实是卡片式、存过卡"的分类
+        const want = ((inputProfile && inputProfile[c.id]) || []).filter(r => r && typeof r === 'object' && Object.entries(r).some(([k, v]) => !k.startsWith('__') && v != null && typeof v !== 'object' && String(v).trim())).length;
+        if (savedBy[c.id] < want) {
+          const blocked = results.filter(r => r.reason === 'card-commit-blocked' && r.categoryId === c.id).map(r => r.note).filter(Boolean);
+          results.unshift({
+            section: c.name,
+            categoryId: c.id,
+            label: `${c.name}：资料 ${want} 段，网页上已保存 ${savedBy[c.id]} 段，还差 ${want - savedBy[c.id]} 段`,
+            value: '',
+            status: 'failed',
+            reason: 'cards-incomplete',
+            note: blocked[0] || '某一轮一张卡都没保存成功，插件停下了',
+          });
+        }
       }
     } catch (_) {}
   }

@@ -1339,6 +1339,7 @@ const REASON_TEXT = {
   'no-el': '找不到控件',
   'no-photo': '资料库未上传照片/简历附件',
   'card-commit-blocked': '点了卡片里的「确认」，但网页没保存',
+  'cards-incomplete': '多段经历没填完',
   'consent-manual': '授权 / 同意类勾选：插件不替你勾，请自己确认后勾选',
   'not-file-input': '网页不是文件上传控件',
   'upload-type-mismatch': '网页上传控件不收这种文件类型（照片 / 简历附件放错了位置），未上传',
@@ -1473,7 +1474,7 @@ function renderReport(report) {
     // 站点把 6.5 强行格式化成 6.50000
     const padded = r.note === 'site-padded' ? '（网页把数值补成了固定小数位，已按你的原值回写）' : '';
     const why =
-      r.reason === 'card-commit-blocked' && r.note
+      (r.reason === 'card-commit-blocked' || r.reason === 'cards-incomplete') && r.note
         ? `（${r.note}）`
         : r.note === 'derived-yesno'
           ? '（按你资料里有没有这类记录推断）'

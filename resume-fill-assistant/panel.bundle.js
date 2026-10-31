@@ -2057,6 +2057,7 @@
     "no-el": "找不到控件",
     "no-photo": "资料库未上传照片/简历附件",
     "card-commit-blocked": "点了卡片里的「确认」，但网页没保存",
+    "cards-incomplete": "多段经历没填完",
     "consent-manual": "授权 / 同意类勾选：插件不替你勾，请自己确认后勾选",
     "not-file-input": "网页不是文件上传控件",
     "upload-type-mismatch": "网页上传控件不收这种文件类型（照片 / 简历附件放错了位置），未上传",
@@ -2161,7 +2162,7 @@
       const panelText = r.panelText ? `（面板内容：${r.panelText}）` : "";
       const downgraded = r.downgraded === "month" ? "（网页只到年月，已按年月写入）" : "";
       const padded = r.note === "site-padded" ? "（网页把数值补成了固定小数位，已按你的原值回写）" : "";
-      const why = r.reason === "card-commit-blocked" && r.note ? `（${r.note}）` : r.note === "derived-yesno" ? "（按你资料里有没有这类记录推断）" : r.note === "already-has-value" ? "（网页上已有内容，没有覆盖）" : r.note === "padded-day" ? "（资料只到年月，网页要完整日期，已补成 1 号）" : "";
+      const why = (r.reason === "card-commit-blocked" || r.reason === "cards-incomplete") && r.note ? `（${r.note}）` : r.note === "derived-yesno" ? "（按你资料里有没有这类记录推断）" : r.note === "already-has-value" ? "（网页上已有内容，没有覆盖）" : r.note === "padded-day" ? "（资料只到年月，网页要完整日期，已补成 1 号）" : "";
       const cells = [
         r.section ? `${r.section}${r.block > 0 ? " #" + (r.block + 1) : ""}` : "未识别区块",
         r.label || "（未取到标签）",
