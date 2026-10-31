@@ -362,10 +362,12 @@ export async function fillPage(profile, options = {}) {
   const round = options.round || 0;
   const okCats = new Set(commitRows.filter(r => r.status === 'filled').map(r => r.categoryId));
   const retry = (expand.noGrow || []).filter(c => okCats.has(c));
-  if (retry.length && round < 2 && !appeared) {
+  // 一轮只能保存一张卡的站点（先保存才能再添加），4 段实习就要 4 轮：只要这一轮确实保存成功了，就继续，最多 12 轮
+  const depth = options.retryDepth || 0;
+  if (retry.length && depth < 12 && !appeared) {
     try {
       await sleep(300);
-      const next = await fillPage(inputProfile, { ...options, round: round + 1, onlyCategories: retry });
+      const next = await fillPage(inputProfile, { ...options, round: round + 1, retryDepth: depth + 1, onlyCategories: retry });
       if (next && !next.error) {
         results.push(...(next.results || []).filter(r => r.reason !== 'custom-no-match'));
         expand = {
