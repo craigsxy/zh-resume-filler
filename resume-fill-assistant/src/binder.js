@@ -447,7 +447,9 @@ export function bind(model, profile, opts = {}) {
         let m = matchSlot(field.labelParts, candidates);
         // 本分类内匹配不到时，才允许跨分类回退，且要求该标签全局唯一
         // （"学历/学位"常被放在"基本信息"里，但"姓名"全局不唯一，仍然不会被误配）
-        if (!m && category) m = matchSlot(field.labelParts, ALL_FIELDS);
+        // 多段经历区块（实习 / 实践 / 项目 / 获奖…）绝不跨分类借值：「实践活动经验」里的「公司/组织名称」
+        // 跨到实习经历去取，就把亚马逊实习填进了社会实践（真机 tupu360）。跨分类兜底只留给基本信息这类单记录区块
+        if (!m && category && !category.multiple) m = matchSlot(field.labelParts, ALL_FIELDS);
 
         // 「是否有 X 经历」：资料里没这个字段，但能按分类有无记录推出来
         if (!m) {

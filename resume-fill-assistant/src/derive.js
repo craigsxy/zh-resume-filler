@@ -129,5 +129,17 @@ export function deriveProfile(profile, today = new Date()) {
     });
     if (fromInterns.length) out.work = fromInterns;
   }
+  // ⑤ 社会实践缺省 → 校园经历（学生会 / 社团 / 学生工作）。两样都空就不填，绝不借实习的内容
+  const prac = (out.practice || []).filter(filledRecord);
+  if (!prac.length) {
+    const fromPos = (out.positions || []).filter(filledRecord).map(r => {
+      const p = { __derivedFrom: 'positions' };
+      const map = { 组织名称: '组织名称', 在校职务名称: '担任角色', 开始时间: '开始时间', 结束时间: '结束时间', 起止时间: '起止时间', 在校职务描述: '实践描述' };
+      for (const [a, b] of Object.entries(map)) if (has(r[a])) p[b] = r[a];
+      if (!has(p['组织名称']) && has(r['在校职务类别'])) p['组织名称'] = r['在校职务类别'];
+      return p;
+    });
+    if (fromPos.length) out.practice = fromPos;
+  }
   return out;
 }

@@ -462,11 +462,12 @@
       sectionKeys: ["在校实践", "实践经历", "科研及实践", "实践活动经验", "实践活动", "社会实践", "校内外实践", "实践经验", "活动经历", "志愿者经历", "志愿服务"],
       fields: [
         T("在校科研及实践项目", "prac.project", ["在校科研及实践项目", "实践项目", "活动名称", "实践名称", "实践活动名称", "项目名称"]),
-        T("担任角色", "prac.role", ["担任角色", "项目角色", "角色", "职务"]),
-        D("开始时间", "prac.start", "day", ["开始时间", "起始时间", "开始日期"]),
-        D("结束时间", "prac.end", "day", ["结束时间", "结束日期", "完成时间"]),
+        T("组织名称", "prac.org", ["组织名称", "公司/组织名称", "公司组织名称", "实践单位", "单位名称", "公司名称", "主办单位", "服务单位", "机构名称", "社团名称"]),
+        T("担任角色", "prac.role", ["担任角色", "项目角色", "角色", "职务", "岗位名称", "岗位", "职位", "担任职务"]),
+        D("开始时间", "prac.start", "day", ["开始时间", "起始时间", "开始日期", "实践开始日期", "实践开始时间"]),
+        D("结束时间", "prac.end", "day", ["结束时间", "结束日期", "完成时间", "实践结束日期", "实践结束时间"]),
         T("起止时间", "prac.period", ["起止时间", "实践时间", "起止日期"]),
-        A("实践描述", "prac.desc", ["实践描述", "项目描述", "实践内容", "项目内容", "活动描述", "活动内容", "经历描述"])
+        A("实践描述", "prac.desc", ["实践描述", "项目描述", "实践内容", "项目内容", "活动描述", "活动内容", "经历描述", "工作职责/内容", "工作职责", "工作内容", "职责描述", "主要职责"])
       ]
     },
     {
@@ -857,7 +858,7 @@
   var STRONG_KEYS = {
     education: ["edu.school", "edu.major"],
     internships: ["exp.company"],
-    practice: ["prac.project"],
+    practice: ["prac.project", "prac.org"],
     projects: ["proj.name"],
     work: ["work.company"],
     certificates: ["cert.name"],
@@ -2064,7 +2065,7 @@
         const seen = /* @__PURE__ */ new Set();
         for (const field of block.fields || []) {
           let m = matchSlot(field.labelParts, candidates);
-          if (!m && category) m = matchSlot(field.labelParts, ALL_FIELDS);
+          if (!m && category && !category.multiple) m = matchSlot(field.labelParts, ALL_FIELDS);
           if (!m) {
             const yn = derivedYesNo(field.labelParts, full);
             if (yn) {
@@ -5036,6 +5037,17 @@
         return w;
       });
       if (fromInterns.length) out.work = fromInterns;
+    }
+    const prac = (out.practice || []).filter(filledRecord);
+    if (!prac.length) {
+      const fromPos = (out.positions || []).filter(filledRecord).map((r) => {
+        const p = { __derivedFrom: "positions" };
+        const map = { 组织名称: "组织名称", 在校职务名称: "担任角色", 开始时间: "开始时间", 结束时间: "结束时间", 起止时间: "起止时间", 在校职务描述: "实践描述" };
+        for (const [a, b] of Object.entries(map)) if (has(r[a])) p[b] = r[a];
+        if (!has(p["组织名称"]) && has(r["在校职务类别"])) p["组织名称"] = r["在校职务类别"];
+        return p;
+      });
+      if (fromPos.length) out.practice = fromPos;
     }
     return out;
   }
