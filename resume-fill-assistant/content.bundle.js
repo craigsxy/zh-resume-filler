@@ -2065,7 +2065,10 @@
         const seen = /* @__PURE__ */ new Set();
         for (const field of block.fields || []) {
           let m = matchSlot(field.labelParts, candidates);
-          if (!m && category && !category.multiple) m = matchSlot(field.labelParts, ALL_FIELDS);
+          if (!m && category && !category.multiple) {
+            const fb = matchSlot(field.labelParts, ALL_FIELDS);
+            if (fb && fb.score >= 0.96) m = fb;
+          }
           if (!m) {
             const yn = derivedYesNo(field.labelParts, full);
             if (yn) {
@@ -2181,9 +2184,13 @@
   ].filter(Boolean).join(" ");
   function usableRecords(profile, category) {
     const records = profile[category.id] || [];
+    const strong = (STRONG_KEYS[category.id] || []).map((slot) => (category.fields.find((f) => f.slot === slot) || {}).label).filter(Boolean);
     return records.filter((r) => {
       if (!r || typeof r !== "object") return false;
-      return Object.entries(r).some(([k, v]) => k !== "__custom" && v != null && String(v).trim());
+      const any = Object.entries(r).some(([k, v]) => !k.startsWith("__") && v != null && typeof v !== "object" && String(v).trim());
+      if (!any) return false;
+      if (!strong.length || r.__derivedFrom) return true;
+      return strong.some((l) => r[l] != null && String(r[l]).trim());
     });
   }
   function candidatesIn(area) {
@@ -2249,10 +2256,12 @@
     const category = section && section.categoryId ? categoryById(section.categoryId) : null;
     if (!category) return false;
     const cands = category.fields.map((f) => ({ field: f, category }));
+    const strong = STRONG_KEYS[category.id] || [];
     for (const b of section.blocks || []) {
       for (const f of b.fields || []) {
         try {
-          if (matchSlot(f.labelParts || [f.label], cands)) return true;
+          const m = matchSlot(f.labelParts || [f.label], cands);
+          if (m && (!strong.length || strong.includes(m.field.slot))) return true;
         } catch (_) {
         }
       }
@@ -5714,7 +5723,7 @@
     });
     const depth = options.retryDepth || 0;
     const totalRecords = CATEGORIES.filter((c) => c.multiple && !c.custom).reduce(
-      (n, c) => n + (inputProfile && inputProfile[c.id] || []).filter((r) => r && typeof r === "object" && Object.entries(r).some(([k, v]) => !k.startsWith("__") && v != null && typeof v !== "object" && String(v).trim())).length,
+      (n, c) => n + usableRecords(inputProfile || {}, c).length,
       0
     );
     if (retry.length && depth < totalRecords + 2 && !appeared) {
@@ -5740,7 +5749,7 @@
         for (const x of sv.saved) savedBy[x.categoryId] = (savedBy[x.categoryId] || 0) + 1;
         for (const c of CATEGORIES) {
           if (!c.multiple || c.custom || !savedBy[c.id]) continue;
-          const want = (inputProfile && inputProfile[c.id] || []).filter((r) => r && typeof r === "object" && Object.entries(r).some(([k, v]) => !k.startsWith("__") && v != null && typeof v !== "object" && String(v).trim())).length;
+          const want = usableRecords(inputProfile || {}, c).length;
           if (savedBy[c.id] < want) {
             const blocked = results.filter((r) => r.reason === "card-commit-blocked" && r.categoryId === c.id).map((r) => r.note).filter(Boolean);
             results.unshift({

@@ -1,7 +1,7 @@
 // L5 编排：扫描 → 绑定 → 逐字段写入 → 汇总报告
 import { buildFormModel } from './form-model.js';
 import { bind, customFieldsOf } from './binder.js';
-import { expandSections } from './repeat.js';
+import { expandSections, usableRecords } from './repeat.js';
 import { writeField } from './adapters/index.js';
 import { resetPanelMemo } from './adapters/select.js';
 import { resolveValue, primaryValue } from './resolver.js';
@@ -426,7 +426,7 @@ export async function fillPage(profile, options = {}) {
   // 上限按资料总段数 + 2 算（只防站点异常时死循环），不是写死的轮数——18 段实习就能跑 18 轮。
   const depth = options.retryDepth || 0;
   const totalRecords = CATEGORIES.filter(c => c.multiple && !c.custom).reduce(
-    (n, c) => n + ((inputProfile && inputProfile[c.id]) || []).filter(r => r && typeof r === 'object' && Object.entries(r).some(([k, v]) => !k.startsWith('__') && v != null && typeof v !== 'object' && String(v).trim())).length,
+    (n, c) => n + usableRecords(inputProfile || {}, c).length,
     0
   );
   if (retry.length && depth < totalRecords + 2 && !appeared) {
@@ -452,7 +452,7 @@ export async function fillPage(profile, options = {}) {
       for (const x of sv.saved) savedBy[x.categoryId] = (savedBy[x.categoryId] || 0) + 1;
       for (const c of CATEGORIES) {
         if (!c.multiple || c.custom || !savedBy[c.id]) continue; // 只核对"这页确实是卡片式、存过卡"的分类
-        const want = ((inputProfile && inputProfile[c.id]) || []).filter(r => r && typeof r === 'object' && Object.entries(r).some(([k, v]) => !k.startsWith('__') && v != null && typeof v !== 'object' && String(v).trim())).length;
+        const want = usableRecords(inputProfile || {}, c).length;
         if (savedBy[c.id] < want) {
           const blocked = results.filter(r => r.reason === 'card-commit-blocked' && r.categoryId === c.id).map(r => r.note).filter(Boolean);
           results.unshift({

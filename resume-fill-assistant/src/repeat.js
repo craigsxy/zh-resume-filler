@@ -6,7 +6,7 @@
 // 找不到就老实只填第一段，绝不去点来路不明的按钮。
 
 import { clickEl, fire, isVisible, sleep } from './util.js';
-import { categoryById, CATEGORIES } from './schema.js';
+import { categoryById, CATEGORIES, STRONG_KEYS } from './schema.js';
 import { buildFormModel } from './form-model.js';
 import { matchSlot } from './binder.js';
 
@@ -31,11 +31,20 @@ const attrOf = el =>
     .join(' ');
 
 /** 只算"真填了内容"的记录：用户加了空卡片不算一段经历 */
-function usableRecords(profile, category) {
+/**
+ * 只算"真填了内容"的记录。有强键的分类（外语的证书 / 语种，实习的公司…）要求强键有值：
+ * 只填了掌握程度、强键全空的记录填不出一张能保存的卡，旧逻辑却会为它添加一张空卡
+ * （真机：外语能力第 2 条空记录 → 多出一张卡、确认失败、还把托福又填了一遍）
+ */
+export function usableRecords(profile, category) {
   const records = profile[category.id] || [];
+  const strong = (STRONG_KEYS[category.id] || []).map(slot => (category.fields.find(f => f.slot === slot) || {}).label).filter(Boolean);
   return records.filter(r => {
     if (!r || typeof r !== 'object') return false;
-    return Object.entries(r).some(([k, v]) => k !== '__custom' && v != null && String(v).trim());
+    const any = Object.entries(r).some(([k, v]) => !k.startsWith('__') && v != null && typeof v !== 'object' && String(v).trim());
+    if (!any) return false;
+    if (!strong.length || r.__derivedFrom) return true;
+    return strong.some(l => r[l] != null && String(r[l]).trim());
   });
 }
 
@@ -132,10 +141,14 @@ function holdsRecords(section) {
   const category = section && section.categoryId ? categoryById(section.categoryId) : null;
   if (!category) return false;
   const cands = category.fields.map(f => ({ field: f, category }));
+  // 必须含本分类的"强键"字段（学校 / 公司 / 奖项…）才是放经历卡片的区块：
+  // 「教育背景-最高学历专业类别」只有一个专业类别字段，旧判据把它当成教育卡片区 → 以为还有 1 个空位 → 不再添加本科那段
+  const strong = STRONG_KEYS[category.id] || [];
   for (const b of section.blocks || []) {
     for (const f of b.fields || []) {
       try {
-        if (matchSlot(f.labelParts || [f.label], cands)) return true;
+        const m = matchSlot(f.labelParts || [f.label], cands);
+        if (m && (!strong.length || strong.includes(m.field.slot))) return true;
       } catch (_) {}
     }
   }

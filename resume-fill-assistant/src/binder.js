@@ -449,7 +449,12 @@ export function bind(model, profile, opts = {}) {
         // （"学历/学位"常被放在"基本信息"里，但"姓名"全局不唯一，仍然不会被误配）
         // 多段经历区块（实习 / 实践 / 项目 / 获奖…）绝不跨分类借值：「实践活动经验」里的「公司/组织名称」
         // 跨到实习经历去取，就把亚马逊实习填进了社会实践（真机 tupu360）。跨分类兜底只留给基本信息这类单记录区块
-        if (!m && category && !category.multiple) m = matchSlot(field.labelParts, ALL_FIELDS);
+        if (!m && category && !category.multiple) {
+          // 跨分类兜底只认（近乎）精确命中：「国家」包含于「是否国家重点实验室」也能打到 0.92 分，
+          // 结果手机号旁的区号下拉被当成了教育经历字段
+          const fb = matchSlot(field.labelParts, ALL_FIELDS);
+          if (fb && fb.score >= 0.96) m = fb;
+        }
 
         // 「是否有 X 经历」：资料里没这个字段，但能按分类有无记录推出来
         if (!m) {
