@@ -5375,6 +5375,38 @@
     }
     return CONSENT_RE.test(ctx);
   }
+  var PLACEHOLDER_RE2 = /^(请选择.*|请输入.*|请填写.*|选填|必填|--+|—+|-|select.*|please.*|年\/月\/日|yyyy.*)$/i;
+  function pageValue(field) {
+    try {
+      const ck = field.controlKind;
+      if (ck === "UPLOAD" || ck === "CHECKBOX_GROUP") return "";
+      const box = field.container || field.el && field.el.parentElement;
+      if (ck === "RADIO_GROUP") {
+        const on = box.querySelector('[class*="radio-wrapper-checked"],[class*="radio--checked"],.is-checked,[role="radio"][aria-checked="true"]');
+        if (on) return String(on.textContent || "").trim() || "checked";
+        if (box.querySelector('[class*="radio-wrapper"],[class*="el-radio"]')) return "";
+        return box.querySelector('input[type="radio"]:checked') ? "checked" : "";
+      }
+      const el = field.el;
+      if (el.tagName === "SELECT") {
+        const o = el.selectedOptions && el.selectedOptions[0];
+        const t = o && o.value !== "" ? String(o.textContent || "").trim() : "";
+        return PLACEHOLDER_RE2.test(t) ? "" : t;
+      }
+      if (el.tagName === "INPUT" || el.tagName === "TEXTAREA") {
+        const t = String(el.value || "").trim();
+        if (t && !PLACEHOLDER_RE2.test(t)) return t;
+      }
+      const sel = box && box.querySelector('[class*="selected-value"],[class*="selection-item"],[class*="select__selected"],[class*="single-value"],[class*="selection__choice"]');
+      if (sel) {
+        const t = String(sel.textContent || "").trim();
+        return PLACEHOLDER_RE2.test(t) ? "" : t;
+      }
+      return "";
+    } catch (_) {
+      return "";
+    }
+  }
   function hasValue(v) {
     if (v == null) return false;
     if (typeof v === "object") return Object.keys(v).length > 0;
@@ -5507,6 +5539,15 @@
       if (seen.has(key) || plan.weak && seen.has(slotKey)) continue;
       seen.add(key);
       seen.add(slotKey);
+      if (!options.overwrite) {
+        const cur = pageValue(plan.field);
+        if (cur) {
+          const row = { ...base, status: "filled", via: "already", readback: cur, note: "already-has-value" };
+          results.push(row);
+          planResults.set(plan, row);
+          continue;
+        }
+      }
       step++;
       progress({ stage: "fill", done: step, total: writable, text: `正在填写 ${step}/${writable}：${plan.sectionTitle ? plan.sectionTitle + " · " : ""}${plan.label || plan.field.label || ""}` });
       let res;
@@ -5655,7 +5696,10 @@
     }
     const round = options.round || 0;
     const okCats = new Set(commitRows.filter((r) => r.status === "filled").map((r) => r.categoryId));
-    const retry = (expand.noGrow || []).filter((c) => okCats.has(c));
+    const retry = [...okCats].filter((c) => {
+      const cat = categoryById(c);
+      return cat && cat.multiple && !cat.custom;
+    });
     const depth = options.retryDepth || 0;
     if (retry.length && depth < 12 && !appeared) {
       try {

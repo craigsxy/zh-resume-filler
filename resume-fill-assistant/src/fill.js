@@ -35,6 +35,46 @@ function isConsent(plan) {
   return CONSENT_RE.test(ctx);
 }
 
+/**
+ * 网页上这一格现在有没有内容（用户手填的、上次填好的、站点预填的都算）。
+ * 有内容就不再写——用户明确要求：已经填上的地方不应该再被覆盖一次。
+ * 认不准结构的自绘控件按"空"处理（沿用原来的写入行为）。
+ */
+const PLACEHOLDER_RE = /^(请选择.*|请输入.*|请填写.*|选填|必填|--+|—+|-|select.*|please.*|年\/月\/日|yyyy.*)$/i;
+function pageValue(field) {
+  try {
+    const ck = field.controlKind;
+    if (ck === 'UPLOAD' || ck === 'CHECKBOX_GROUP') return '';
+    const box = field.container || (field.el && field.el.parentElement);
+    if (ck === 'RADIO_GROUP') {
+      const on = box.querySelector('[class*="radio-wrapper-checked"],[class*="radio--checked"],.is-checked,[role="radio"][aria-checked="true"]');
+      if (on) return String(on.textContent || '').trim() || 'checked';
+      // 组件库单选：外层没有"已选中"样式就算没选（原生 checked 可能是假的）
+      if (box.querySelector('[class*="radio-wrapper"],[class*="el-radio"]')) return '';
+      return box.querySelector('input[type="radio"]:checked') ? 'checked' : '';
+    }
+    const el = field.el;
+    if (el.tagName === 'SELECT') {
+      const o = el.selectedOptions && el.selectedOptions[0];
+      const t = o && o.value !== '' ? String(o.textContent || '').trim() : '';
+      return PLACEHOLDER_RE.test(t) ? '' : t;
+    }
+    if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+      const t = String(el.value || '').trim();
+      if (t && !PLACEHOLDER_RE.test(t)) return t;
+    }
+    // 自绘下拉：已选值节点（antd / Element / 通用命名）
+    const sel = box && box.querySelector('[class*="selected-value"],[class*="selection-item"],[class*="select__selected"],[class*="single-value"],[class*="selection__choice"]');
+    if (sel) {
+      const t = String(sel.textContent || '').trim();
+      return PLACEHOLDER_RE.test(t) ? '' : t;
+    }
+    return '';
+  } catch (_) {
+    return '';
+  }
+}
+
 function hasValue(v) {
   if (v == null) return false;
   if (typeof v === 'object') return Object.keys(v).length > 0;
@@ -192,6 +232,16 @@ export async function fillPage(profile, options = {}) {
     seen.add(key);
     seen.add(slotKey);
 
+    // 网页上已经有内容：不覆盖（报告里标「网页上已有内容」）
+    if (!options.overwrite) {
+      const cur = pageValue(plan.field);
+      if (cur) {
+        const row = { ...base, status: 'filled', via: 'already', readback: cur, note: 'already-has-value' };
+        results.push(row);
+        planResults.set(plan, row);
+        continue;
+      }
+    }
     step++;
     progress({ stage: 'fill', done: step, total: writable, text: `正在填写 ${step}/${writable}：${plan.sectionTitle ? plan.sectionTitle + ' · ' : ''}${plan.label || plan.field.label || ''}` });
     let res;
@@ -365,7 +415,12 @@ export async function fillPage(profile, options = {}) {
   // → 重新扫描再来一轮（已保存的卡会被 withoutSavedRecords 认出来，不会重复录）。最多 3 轮。
   const round = options.round || 0;
   const okCats = new Set(commitRows.filter(r => r.status === 'filled').map(r => r.categoryId));
-  const retry = (expand.noGrow || []).filter(c => okCats.has(c));
+  // 这一轮确实保存成功了卡片的分类：继续下一轮（下一轮会把已保存的认出来，只处理剩下的；
+  // 没有剩下的就什么也不做、自然停止）。不能只看"点添加没反应"——上一张保存后添加是有反应的，旧逻辑会就此停手
+  const retry = [...okCats].filter(c => {
+    const cat = categoryById(c);
+    return cat && cat.multiple && !cat.custom;
+  });
   // 一轮只能保存一张卡的站点（先保存才能再添加），4 段实习就要 4 轮：只要这一轮确实保存成功了，就继续，最多 12 轮
   const depth = options.retryDepth || 0;
   if (retry.length && depth < 12 && !appeared) {

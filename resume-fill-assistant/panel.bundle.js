@@ -2161,7 +2161,7 @@
       const panelText = r.panelText ? `（面板内容：${r.panelText}）` : "";
       const downgraded = r.downgraded === "month" ? "（网页只到年月，已按年月写入）" : "";
       const padded = r.note === "site-padded" ? "（网页把数值补成了固定小数位，已按你的原值回写）" : "";
-      const why = r.reason === "card-commit-blocked" && r.note ? `（${r.note}）` : r.note === "derived-yesno" ? "（按你资料里有没有这类记录推断）" : "";
+      const why = r.reason === "card-commit-blocked" && r.note ? `（${r.note}）` : r.note === "derived-yesno" ? "（按你资料里有没有这类记录推断）" : r.note === "already-has-value" ? "（网页上已有内容，没有覆盖）" : r.note === "padded-day" ? "（资料只到年月，网页要完整日期，已补成 1 号）" : "";
       const cells = [
         r.section ? `${r.section}${r.block > 0 ? " #" + (r.block + 1) : ""}` : "未识别区块",
         r.label || "（未取到标签）",
