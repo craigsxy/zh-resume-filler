@@ -659,14 +659,17 @@
   }
   for (const c of CATEGORIES) c.fields = c.fields.map(withLabelAlias);
   var DENY_ALIAS = {
-    "personal.highestDegree": ["学历", "学位", "学历层次", "培养层次", "毕业学历"]
+    "personal.highestDegree": ["学历", "学位", "学历层次", "培养层次", "毕业学历"],
+    // 手机号旁的「国家/地区（区号）」下拉会被切成「国家」：这不是国籍
+    "personal.nationality": ["国家", "国家地区", "国家区号", "地区"]
   };
   var DENY_RE = {
     "personal.highestDegree": /专业/,
     "edu.degreeLevel": /专业/,
     // 专业类别的标签一定带"类/门"（专业类别 / 学科门类 / 专业大类）；
     // 否则「最高学历」会因为"被最高学历专业类别包含"而和学历打成平手
-    "edu.majorCategory": /^[^类门]*$/
+    "edu.majorCategory": /^[^类门]*$/,
+    "personal.nationality": /(区号|电话|手机)/
   };
   for (const c of CATEGORIES) {
     for (const f of c.fields) {

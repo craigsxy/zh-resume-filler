@@ -223,6 +223,18 @@ function errorsIn(root) {
     // 站点提示常是千篇一律的「必填字段不能为空」：有字段名就只报字段名
     out.push(lab ? (/(必填|不能为空|请填写|请选择|请输入)/.test(msg) ? lab : `${lab}：${msg}`) : msg);
   }
+  // 站点的报错节点不带任何可识别的类名时（真机 tupu360 就是这样）：按文字找红字提示
+  if (!out.length) {
+    for (const e of root.querySelectorAll('div,span,p,small,em')) {
+      if (e.children.length || !isVisible(e)) continue;
+      // 下拉 / 输入框里的「请选择」占位文字不是报错
+      if (e.closest('[class*="placeholder"],[class*="Placeholder"],[role="combobox"],[class*="select"],[class*="Select"]')) continue;
+      const msg = String(e.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!/^(必填字段不能为空|.{0,12}(不能为空|为必填项|必填|请填写.{0,10}|请选择.{0,10}|请输入.{0,10}))$/.test(msg)) continue;
+      const lab = labelOfError(e, root);
+      out.push(lab || msg);
+    }
+  }
   return [...new Set(out)].slice(0, 8);
 }
 

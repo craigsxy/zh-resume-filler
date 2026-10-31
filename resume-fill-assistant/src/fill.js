@@ -128,6 +128,8 @@ export async function fillPage(profile, options = {}) {
   const writable = plans.filter(p => p.slot && !p.dup && p.hasRecord && hasValue(p.value)).length;
   let step = 0;
   for (const plan of plans) {
+    // 上一轮已经填好的控件不再重写（条件展开后的第 2 轮）
+    if (options.doneEls && plan.field && options.doneEls.has(plan.field.el)) continue;
     const base = {
       section: plan.sectionTitle || '',
       categoryId: plan.categoryId || '',
@@ -324,12 +326,43 @@ export async function fillPage(profile, options = {}) {
     }
   }
 
+  // 条件展开（v2.2.2）：很多网申要先答「是否有实习经验 = 是」才显示实习卡片区、追问题。
+  // 只扫一次就永远看不到它们 → 填完一轮后重扫，有新出现的字段就再来一轮（已填的不重写）。
+  const round0 = options.round || 0;
+  let appeared = 0;
+  if (round0 < 2) {
+    try {
+      const known = new Set(plans.map(p => p.field && p.field.el).filter(Boolean));
+      await sleep(250);
+      const again = buildFormModel(options.root && options.root.isConnected ? options.root : undefined);
+      for (const sct of again.sections || []) for (const b of sct.blocks || []) for (const f of b.fields || []) if (!known.has(f.el)) appeared++;
+    } catch (_) {}
+  }
+  if (appeared > 0) {
+    progress({ stage: 'scan', text: `页面新展开了 ${appeared} 个字段，接着填…` });
+    const done = new Set(options.doneEls || []);
+    for (const [plan, row] of planResults) if (row && row.status === 'filled' && plan.field) done.add(plan.field.el);
+    try {
+      const next = await fillPage(inputProfile, { ...options, round: round0 + 1, doneEls: done, onlyCategories: undefined });
+      if (next && !next.error) {
+        results.push(...(next.results || []).filter(r => r.reason !== 'custom-no-match'));
+        expand = {
+          ...expand,
+          added: (expand.added || 0) + ((next.repeat && next.repeat.added) || 0),
+          log: [...(expand.log || []), `页面新展开了 ${appeared} 个字段，又填了一轮`, ...((next.repeat && next.repeat.log) || []).map(l => `第 ${round0 + 2} 轮 · ${l}`)],
+        };
+        if (next.ai && aiStat) aiStat = { ...aiStat, calls: aiStat.calls + next.ai.calls, mapped: aiStat.mapped + next.ai.mapped, options: aiStat.options + next.ai.options };
+        commitRows = [];
+      }
+    } catch (_) {}
+  }
+
   // 卡片站点常见"先保存当前卡才能再加一张"：这一轮点「添加」没反应、但同分类已经有卡确认成功了
   // → 重新扫描再来一轮（已保存的卡会被 withoutSavedRecords 认出来，不会重复录）。最多 3 轮。
   const round = options.round || 0;
   const okCats = new Set(commitRows.filter(r => r.status === 'filled').map(r => r.categoryId));
   const retry = (expand.noGrow || []).filter(c => okCats.has(c));
-  if (retry.length && round < 2) {
+  if (retry.length && round < 2 && !appeared) {
     try {
       await sleep(300);
       const next = await fillPage(inputProfile, { ...options, round: round + 1, onlyCategories: retry });

@@ -1059,7 +1059,7 @@ async function typeDate(field, target) {
  *
  * @returns {{status:'filled'|'skipped'|'failed', reason?:string, via?:string, precision?:string, downgraded?:string, readback?:string, attempts?:string[]}}
  */
-export async function writeDate(plan, deps) {
+async function writeDateOnce(plan, deps) {
   const declared = plan.precision || 'day';
   const parsed = parseTarget(plan.value, declared);
   if (!parsed) return { status: 'skipped', reason: 'value-not-a-date' };
@@ -1206,4 +1206,28 @@ export async function writeDate(plan, deps) {
     ...(r3 && r3.panelSel ? { panelSel: r3.panelSel } : {}),
     ...(r3 && r3.panelText ? { panelText: String(r3.panelText).slice(0, 120) } : {}),
   };
+}
+
+/**
+ * 资料只到年月（「2025-08」）、网页日历只收完整日期时：先按年月试，被拒就补成该月 1 号再试一次。
+ * 真机（tupu360 · antd 日历）：面板输入框只认 YYYY-MM-DD，年月面板点不出来 → 五级全失败。
+ * 补的是 1 号，报告里标注 padded-day，让你知道"日"是插件补的。
+ */
+export async function writeDate(plan, deps) {
+  const first = await writeDateOnce(plan, deps);
+  if (first.status === 'filled') return first;
+  const raw = String(plan.value ?? '').trim();
+  const prec = rawPrecision(raw);
+  if (prec !== 'month' && prec !== 'year') return first;
+  // 第一遍连日历面板都没打开、也没能键入：控件根本不接，补成 1 号也一样，别再等一轮超时
+  const reached = (first.attempts || []).some(a => /^(panel>|typing:ok|native:ok|triple:ok)/.test(String(a)));
+  if (!reached) return first;
+  const t = parseTarget(raw, prec);
+  if (!t) return first;
+  const padded = `${t.y}-${String(t.m || 1).padStart(2, '0')}-01`;
+  const second = await writeDateOnce({ ...plan, value: padded, precision: 'day' }, deps);
+  if (second.status !== 'filled') {
+    return { ...first, attempts: [...(first.attempts || []), 'pad-01:' + (second.reason || 'fail')] };
+  }
+  return { ...second, note: 'padded-day', attempts: [...(first.attempts || []), 'pad-01:ok', ...(second.attempts || [])] };
 }

@@ -53,16 +53,47 @@ export async function writeRadio(plan) {
     };
   }
 
-  clickEl(m.option.el);
-  await sleep(90);
-
   const root = field.container || field.el.parentElement;
+  const target = m.option.el;
+  // 组件库（antd / Element / iView）的单选：界面上的选中样式由框架状态决定，挂在外层 wrapper 的 class 上。
+  // 只看原生 input.checked 会被骗：原生勾上了、框架没收到 → 下一次重绘就被清掉（真机 tupu360「性别」）。
+  const wrapperOf = el => (el && el.closest && el.closest('[class*="radio-wrapper"],[class*="radio__"],label[class*="radio"],[class*="el-radio"],[class*="ivu-radio-wrapper"]')) || null;
+  const committed = () => {
+    const c = m.option.native ? target : null;
+    const w = wrapperOf(target);
+    if (w && /radio/i.test(String(w.className || ''))) return /checked|is-checked|active/i.test(String(w.className || ''));
+    if (c) return !!c.checked;
+    return target.getAttribute && target.getAttribute('aria-checked') === 'true';
+  };
+  const attempts = [];
+  const tryClick = async (el, tag) => {
+    if (!el) return false;
+    clickEl(el);
+    await sleep(120);
+    if (!committed() && typeof el.click === 'function') {
+      el.click();
+      await sleep(120);
+    }
+    const ok = committed();
+    attempts.push(tag + ':' + (ok ? 'ok' : 'fail'));
+    return ok;
+  };
+  const wrap = wrapperOf(target);
+  let ok =
+    (await tryClick(target, 'input')) ||
+    (await tryClick(wrap, 'wrapper')) ||
+    (await tryClick(target.parentElement !== wrap ? target.parentElement : null, 'inner'));
+  // 站点可能稍后重绘：隔一会儿再确认一次，被清掉就再点一次外层
+  if (ok) {
+    await sleep(400);
+    if (!committed()) {
+      attempts.push('cleared');
+      ok = await tryClick(wrap || target, 'retry');
+    }
+  }
   let checked = root.querySelector('input[type="radio"]:checked');
-  // 合成事件未被激活时，用原生 click() 再试一次（对单选是幂等操作）
-  if (!checked && m.option.native && typeof m.option.el.click === 'function') {
-    m.option.el.click();
-    await sleep(70);
-    checked = root.querySelector('input[type="radio"]:checked');
+  if (!ok) {
+    return { status: 'failed', reason: 'radio-not-committed', expected: m.option.label, attempts };
   }
 
   let readback = '';
@@ -75,8 +106,8 @@ export async function writeRadio(plan) {
   }
 
   // 回读为空但点击确实发生了，按"低置信"处理，不谎报成功
-  if (!readback) return { status: 'filled', via: 'click', readback: '', lowConfidence: true };
+  if (!readback) return { status: 'filled', via: 'click', readback: '', lowConfidence: true, attempts };
   return sameOption(readback, m.option.label)
-    ? { status: 'filled', via: 'click', readback }
-    : { status: 'failed', reason: 'readback-mismatch', readback, expected: m.option.label };
+    ? { status: 'filled', via: 'click', readback, attempts }
+    : { status: 'failed', reason: 'readback-mismatch', readback, expected: m.option.label, attempts };
 }

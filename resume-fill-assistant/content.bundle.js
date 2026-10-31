@@ -827,14 +827,17 @@
   }
   for (const c of CATEGORIES) c.fields = c.fields.map(withLabelAlias);
   var DENY_ALIAS = {
-    "personal.highestDegree": ["学历", "学位", "学历层次", "培养层次", "毕业学历"]
+    "personal.highestDegree": ["学历", "学位", "学历层次", "培养层次", "毕业学历"],
+    // 手机号旁的「国家/地区（区号）」下拉会被切成「国家」：这不是国籍
+    "personal.nationality": ["国家", "国家地区", "国家区号", "地区"]
   };
   var DENY_RE = {
     "personal.highestDegree": /专业/,
     "edu.degreeLevel": /专业/,
     // 专业类别的标签一定带"类/门"（专业类别 / 学科门类 / 专业大类）；
     // 否则「最高学历」会因为"被最高学历专业类别包含"而和学历打成平手
-    "edu.majorCategory": /^[^类门]*$/
+    "edu.majorCategory": /^[^类门]*$/,
+    "personal.nationality": /(区号|电话|手机)/
   };
   for (const c of CATEGORIES) {
     for (const f of c.fields) {
@@ -2485,14 +2488,41 @@
         available: options.map((o) => o.label).slice(0, 20)
       };
     }
-    clickEl(m.option.el);
-    await sleep(90);
     const root = field.container || field.el.parentElement;
+    const target = m.option.el;
+    const wrapperOf = (el) => el && el.closest && el.closest('[class*="radio-wrapper"],[class*="radio__"],label[class*="radio"],[class*="el-radio"],[class*="ivu-radio-wrapper"]') || null;
+    const committed2 = () => {
+      const c = m.option.native ? target : null;
+      const w = wrapperOf(target);
+      if (w && /radio/i.test(String(w.className || ""))) return /checked|is-checked|active/i.test(String(w.className || ""));
+      if (c) return !!c.checked;
+      return target.getAttribute && target.getAttribute("aria-checked") === "true";
+    };
+    const attempts = [];
+    const tryClick = async (el, tag) => {
+      if (!el) return false;
+      clickEl(el);
+      await sleep(120);
+      if (!committed2() && typeof el.click === "function") {
+        el.click();
+        await sleep(120);
+      }
+      const ok2 = committed2();
+      attempts.push(tag + ":" + (ok2 ? "ok" : "fail"));
+      return ok2;
+    };
+    const wrap = wrapperOf(target);
+    let ok = await tryClick(target, "input") || await tryClick(wrap, "wrapper") || await tryClick(target.parentElement !== wrap ? target.parentElement : null, "inner");
+    if (ok) {
+      await sleep(400);
+      if (!committed2()) {
+        attempts.push("cleared");
+        ok = await tryClick(wrap || target, "retry");
+      }
+    }
     let checked = root.querySelector('input[type="radio"]:checked');
-    if (!checked && m.option.native && typeof m.option.el.click === "function") {
-      m.option.el.click();
-      await sleep(70);
-      checked = root.querySelector('input[type="radio"]:checked');
+    if (!ok) {
+      return { status: "failed", reason: "radio-not-committed", expected: m.option.label, attempts };
     }
     let readback = "";
     if (checked) readback = optionLabelOf(checked, root);
@@ -2502,8 +2532,8 @@
       );
       if (fake) readback = shortText(fake, 40);
     }
-    if (!readback) return { status: "filled", via: "click", readback: "", lowConfidence: true };
-    return sameOption(readback, m.option.label) ? { status: "filled", via: "click", readback } : { status: "failed", reason: "readback-mismatch", readback, expected: m.option.label };
+    if (!readback) return { status: "filled", via: "click", readback: "", lowConfidence: true, attempts };
+    return sameOption(readback, m.option.label) ? { status: "filled", via: "click", readback, attempts } : { status: "failed", reason: "readback-mismatch", readback, expected: m.option.label, attempts };
   }
 
   // src/adapters/select.js
@@ -4471,7 +4501,7 @@
     }
     return { ok: false, reason: "value-rejected" };
   }
-  async function writeDate(plan, deps) {
+  async function writeDateOnce(plan, deps) {
     const declared = plan.precision || "day";
     const parsed = parseTarget(plan.value, declared);
     if (!parsed) return { status: "skipped", reason: "value-not-a-date" };
@@ -4579,6 +4609,23 @@
       ...r3 && r3.panelSel ? { panelSel: r3.panelSel } : {},
       ...r3 && r3.panelText ? { panelText: String(r3.panelText).slice(0, 120) } : {}
     };
+  }
+  async function writeDate(plan, deps) {
+    const first = await writeDateOnce(plan, deps);
+    if (first.status === "filled") return first;
+    const raw = String(plan.value ?? "").trim();
+    const prec = rawPrecision(raw);
+    if (prec !== "month" && prec !== "year") return first;
+    const reached = (first.attempts || []).some((a) => /^(panel>|typing:ok|native:ok|triple:ok)/.test(String(a)));
+    if (!reached) return first;
+    const t = parseTarget(raw, prec);
+    if (!t) return first;
+    const padded = `${t.y}-${String(t.m || 1).padStart(2, "0")}-01`;
+    const second = await writeDateOnce({ ...plan, value: padded, precision: "day" }, deps);
+    if (second.status !== "filled") {
+      return { ...first, attempts: [...first.attempts || [], "pad-01:" + (second.reason || "fail")] };
+    }
+    return { ...second, note: "padded-day", attempts: [...first.attempts || [], "pad-01:ok", ...second.attempts || []] };
   }
 
   // src/adapters/upload.js
@@ -4828,6 +4875,16 @@
       if (!msg) continue;
       const lab = labelOfError(e, root);
       out.push(lab ? /(必填|不能为空|请填写|请选择|请输入)/.test(msg) ? lab : `${lab}：${msg}` : msg);
+    }
+    if (!out.length) {
+      for (const e of root.querySelectorAll("div,span,p,small,em")) {
+        if (e.children.length || !isVisible(e)) continue;
+        if (e.closest('[class*="placeholder"],[class*="Placeholder"],[role="combobox"],[class*="select"],[class*="Select"]')) continue;
+        const msg = String(e.textContent || "").replace(/\s+/g, " ").trim();
+        if (!/^(必填字段不能为空|.{0,12}(不能为空|为必填项|必填|请填写.{0,10}|请选择.{0,10}|请输入.{0,10}))$/.test(msg)) continue;
+        const lab = labelOfError(e, root);
+        out.push(lab || msg);
+      }
     }
     return [...new Set(out)].slice(0, 8);
   }
@@ -5390,6 +5447,7 @@
     const writable = plans.filter((p) => p.slot && !p.dup && p.hasRecord && hasValue(p.value)).length;
     let step = 0;
     for (const plan of plans) {
+      if (options.doneEls && plan.field && options.doneEls.has(plan.field.el)) continue;
       const base = {
         section: plan.sectionTitle || "",
         categoryId: plan.categoryId || "",
@@ -5558,10 +5616,40 @@
         results.push({ section: "", label: "卡片确认", status: "failed", reason: "exception:" + String(e && e.message || e).slice(0, 80) });
       }
     }
+    const round0 = options.round || 0;
+    let appeared = 0;
+    if (round0 < 2) {
+      try {
+        const known = new Set(plans.map((p) => p.field && p.field.el).filter(Boolean));
+        await sleep(250);
+        const again = buildFormModel(options.root && options.root.isConnected ? options.root : void 0);
+        for (const sct of again.sections || []) for (const b of sct.blocks || []) for (const f of b.fields || []) if (!known.has(f.el)) appeared++;
+      } catch (_) {
+      }
+    }
+    if (appeared > 0) {
+      progress({ stage: "scan", text: `页面新展开了 ${appeared} 个字段，接着填…` });
+      const done = new Set(options.doneEls || []);
+      for (const [plan, row] of planResults) if (row && row.status === "filled" && plan.field) done.add(plan.field.el);
+      try {
+        const next = await fillPage(inputProfile, { ...options, round: round0 + 1, doneEls: done, onlyCategories: void 0 });
+        if (next && !next.error) {
+          results.push(...(next.results || []).filter((r) => r.reason !== "custom-no-match"));
+          expand = {
+            ...expand,
+            added: (expand.added || 0) + (next.repeat && next.repeat.added || 0),
+            log: [...expand.log || [], `页面新展开了 ${appeared} 个字段，又填了一轮`, ...(next.repeat && next.repeat.log || []).map((l) => `第 ${round0 + 2} 轮 · ${l}`)]
+          };
+          if (next.ai && aiStat) aiStat = { ...aiStat, calls: aiStat.calls + next.ai.calls, mapped: aiStat.mapped + next.ai.mapped, options: aiStat.options + next.ai.options };
+          commitRows = [];
+        }
+      } catch (_) {
+      }
+    }
     const round = options.round || 0;
     const okCats = new Set(commitRows.filter((r) => r.status === "filled").map((r) => r.categoryId));
     const retry = (expand.noGrow || []).filter((c) => okCats.has(c));
-    if (retry.length && round < 2) {
+    if (retry.length && round < 2 && !appeared) {
       try {
         await sleep(300);
         const next = await fillPage(inputProfile, { ...options, round: round + 1, onlyCategories: retry });
